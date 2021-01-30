@@ -6,7 +6,7 @@ from torch.utils import data
 import os
 import logging
 
-from ..torchexpresso import savers
+from torchexpresso import savers
 
 logger = logging.getLogger(__file__)
 

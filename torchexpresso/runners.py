@@ -1,9 +1,9 @@
 import torch
 import logging
-from ..torchexpresso import contexts
-from ..torchexpresso.callbacks import CallbackRegistry
-from ..torchexpresso.steps import TrainingStep, Step
-from ..torchexpresso.savers import Saver, NoopSaver
+from torchexpresso import contexts
+from torchexpresso.callbacks import CallbackRegistry
+from torchexpresso.steps import TrainingStep, Step
+from torchexpresso.savers import Saver, NoopSaver
 
 logger = logging.getLogger(__file__)
 

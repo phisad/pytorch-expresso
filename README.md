@@ -1,6 +1,6 @@
 # pytorch-expresso
 
-High-level framework for PyTorch to quickly setup training using configurable experiments
+A high-level framework for PyTorch to quickly set up a training pipeline by using configurable experiments.
 
 # Usage
 
