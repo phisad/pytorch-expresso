@@ -134,13 +134,20 @@ class ExperimentConfigLoader:
     def __expand_config_values(self, config_top_directory_or_file, loaded_config):
         config = dict()
         for key in loaded_config.keys():
-            # these are special pointer keys to configs (which could also be inlined)
-            if key in self.ref_words and loaded_config[key].endswith(".json"):
-                file_name = os.path.basename(loaded_config[key])[:-len(".json")]
-                config[key] = self.__load_json_config_as_dict(config_top_directory_or_file, loaded_config[key])
-                config[key]["name"] = file_name
+            # Note: These are special pointer keys to dict or file configs (which could also be inlined)
+            if key in self.ref_words:
+                key_value = loaded_config[key]
+                if isinstance(key_value, dict):
+                    # if the value is a dict with values that refer to configs
+                    config[key] = self.__expand_dict_values(config_top_directory_or_file, loaded_config[key])
+                elif key_value.endswith(".json"):
+                    file_name = os.path.basename(loaded_config[key])[:-len(".json")]
+                    config[key] = self.__load_json_config_as_dict(config_top_directory_or_file, loaded_config[key])
+                    config[key]["name"] = file_name
+                else:
+                    raise Exception("Cannot handle key_value for ref_word %s: %s" % (key, key_value))
             else:
-                # if the value is a dict with values that refer to configs
+                # Note: The key value is a potentially a dict anyway (like 'params')
                 config[key] = self.__expand_dict_values(config_top_directory_or_file, loaded_config[key])
         if "series" in loaded_config.keys():  # special case that should only occur once in top level
             series = loaded_config["series"]
