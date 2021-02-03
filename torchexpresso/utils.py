@@ -20,6 +20,12 @@ def determine_sub_directory(directory, sub_directory_name, to_read=True):
     return sub_directory
 
 
+def mkdir_if_not_exists(directory):
+    if not os.path.exists(directory):
+        print("Create directory at: %s" % directory)
+        os.mkdir(directory)
+
+
 def exists_sub_directory(directory, sub_directory_name):
     sub_directory = os.path.join(directory, sub_directory_name)
     return exists_directory(sub_directory)

@@ -153,10 +153,14 @@ def log_config(comet, experiment_config):
     def apply_prefix(params_dict, prefix):
         return dict([("%s-%s" % (prefix, name), v) for name, v in params_dict.items()])
 
-    comet.log_parameters(apply_prefix(experiment_config["params"], "exp"))
-    comet.log_parameters(apply_prefix(experiment_config["model"]["params"], "model"))
-    comet.log_parameters(apply_prefix(experiment_config["dataset"]["params"], "ds"))
-    comet.log_parameters(apply_prefix(experiment_config["task"], "task"))
+    if "params" in experiment_config:
+        comet.log_parameters(apply_prefix(experiment_config["params"], "exp"))
+    if "model" in experiment_config:
+        comet.log_parameters(apply_prefix(experiment_config["model"]["params"], "model"))
+    if "dataset" in experiment_config:
+        comet.log_parameters(apply_prefix(experiment_config["dataset"]["params"], "ds"))
+    if "task" in experiment_config:
+        comet.log_parameters(apply_prefix(experiment_config["task"], "task"))
 
 
 def log_checkpoint(comet, checkpoint):
@@ -237,7 +241,7 @@ class PredictionContext:
 
     @classmethod
     def from_config(cls, experiment_config, split_names):
-        """ Create a training context from the config"""
+        """ Create a prediction context from the config"""
 
         """ Load and setup the cometml experiment """
         comet = ContextLoader.load_cometml_experiment(experiment_config["cometml"], experiment_config["name"],
@@ -263,6 +267,35 @@ class PredictionContext:
         self.holder["config"] = config
         self.holder["comet"] = comet
         self.holder["model"] = model
+        self.holder["providers"] = providers
+        self.holder["device"] = device
+
+    def __getitem__(self, item):
+        return self.holder[item]
+
+
+class ProcessorContext:
+
+    @classmethod
+    def from_config(cls, experiment_config, split_names):
+        """ Create a processor context from the config"""
+
+        """ Load and setup the cometml experiment """
+        comet = ContextLoader.load_cometml_experiment(experiment_config["cometml"], experiment_config["name"],
+                                                      experiment_config["tags"])
+        log_config(comet, experiment_config)
+
+        """ Load and setup the model """
+        device = ContextLoader.load_device(experiment_config["params"]["cpu_only"])
+
+        """ Load the data providers """
+        providers = ContextLoader.load_providers_from_config(experiment_config, split_names, device)
+        return cls(experiment_config, comet, providers, device)
+
+    def __init__(self, config, comet, providers, device):
+        self.holder = dict()
+        self.holder["config"] = config
+        self.holder["comet"] = comet
         self.holder["providers"] = providers
         self.holder["device"] = device
 

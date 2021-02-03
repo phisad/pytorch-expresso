@@ -112,3 +112,38 @@ class Predictor(object):
                 callbacks.on_step(inputs=batch_inputs, outputs=batch_outputs, labels=batch_labels, mask=None, loss=None,
                                   step=current_step)
             callbacks.on_epoch_end(epoch=None)
+
+
+class Processor(object):
+    """
+        Perform anything which does not involve a model. This can be used for pre-processing.
+
+        Providers and callbacks are called as usualy.
+    """
+
+    @classmethod
+    def from_config(cls, experiment_config, split_name):
+        """
+            @param experiment_config: a dictionary with all meta-information to perform the training
+            @param split_name: Name of the dataset split on which to perform the process.
+        """
+        context = contexts.ProcessorContext.from_config(experiment_config, [split_name])
+        return cls(context, split_name)
+
+    def __init__(self, context, split_name):
+        self.ctx = context
+        self.split_name = split_name
+
+    def perform(self, callbacks: CallbackRegistry = None):
+        logger.info("Perform process for the experiment '%s' on '%s'", self.ctx["config"]["name"], self.split_name)
+        if callbacks is None:
+            callbacks = CallbackRegistry()
+        """ Perform the test """
+        with self.ctx["comet"].test(), torch.no_grad():
+            callbacks.on_epoch_start(phase="test", epoch=None)
+            provider = self.ctx["providers"][self.split_name]
+            for current_step, (batch_inputs, batch_labels) in enumerate(provider):
+                current_step = current_step + 1
+                callbacks.on_step(inputs=batch_inputs, outputs=None, labels=batch_labels, mask=None, loss=None,
+                                  step=current_step)
+            callbacks.on_epoch_end(epoch=None)
