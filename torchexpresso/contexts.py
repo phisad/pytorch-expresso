@@ -90,14 +90,17 @@ class ContextLoader:
 
     @staticmethod
     def load_env_from_config(env_config, task, split_name, device):
+        env_params = None
+        if "params" in env_config:
+            env_params = env_config["params"]
         return ContextLoader.load_env_dynamically(env_config["package"], env_config["class"],
-                                                  env_config["params"], task, split_name, device)
+                                                  env_params, task, split_name, device)
 
     @staticmethod
-    def load_env_dynamically(python_package, python_class, params, task, split_name, device):
+    def load_env_dynamically(python_package, python_class, env_params, task, split_name, device):
         env_package = __import__(python_package, fromlist=python_class)
         env_class = getattr(env_package, python_class)
-        return env_class(task, params, split_name, device)
+        return env_class(task, env_params, split_name, device)
 
     @staticmethod
     def load_dataset_from_config(dataset_config, task, split_name, device):
