@@ -135,15 +135,30 @@ class Processor(object):
         self.split_name = split_name
 
     def perform(self, callbacks: CallbackRegistry = None):
-        logger.info("Perform process for the experiment '%s' on '%s'", self.ctx["config"]["name"], self.split_name)
+        logger.info("Perform processing for the experiment '%s' on '%s'", self.ctx["config"]["name"], self.split_name)
         if callbacks is None:
             callbacks = CallbackRegistry()
-        """ Perform the test """
+
+        epoch_start = 1
+        total_epochs = 1
+        if "params" in self.ctx["config"]:
+            exp_params = self.ctx["config"]["params"]
+            if "epoch_start" in exp_params:
+                epoch_start = exp_params["epoch_start"]
+            if "num_epochs" in exp_params:
+                total_epochs = exp_params["num_epochs"]
+
+        if len(callbacks) == 0:
+            logger.info("No callbacks or saver registered!")
+
+        """ Perform the processing """
         with self.ctx["comet"].test(), torch.no_grad():
-            callbacks.on_epoch_start(phase="test", epoch=None)
-            provider = self.ctx["providers"][self.split_name]
-            for current_step, (batch_inputs, batch_labels) in enumerate(provider):
-                current_step = current_step + 1
-                callbacks.on_step(inputs=batch_inputs, outputs=None, labels=batch_labels, mask=None, loss=None,
-                                  step=current_step)
-            callbacks.on_epoch_end(epoch=None)
+            for epoch in range(epoch_start, total_epochs + 1):
+                callbacks.on_epoch_start(phase="test", epoch=None)
+                provider = self.ctx["providers"][self.split_name]
+                for current_step, (batch_inputs, batch_labels) in enumerate(provider):
+                    current_step = current_step + 1
+                    callbacks.on_step(inputs=batch_inputs, outputs=None, labels=batch_labels, mask=None, loss=None,
+                                      step=current_step)
+                callbacks.on_epoch_end(epoch=None)
+        logger.info("Finished processing for the experiment '%s' ", self.ctx["config"]["name"])
