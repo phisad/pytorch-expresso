@@ -152,13 +152,12 @@ class Processor(object):
             logger.info("No callbacks or saver registered!")
 
         """ Perform the processing """
-        with self.ctx["comet"].test(), torch.no_grad():
-            for epoch in range(epoch_start, total_epochs + 1):
-                callbacks.on_epoch_start(phase="test", epoch=None)
-                provider = self.ctx["providers"][self.split_name]
-                for current_step, (batch_inputs, batch_labels) in enumerate(provider):
-                    current_step = current_step + 1
-                    callbacks.on_step(inputs=batch_inputs, outputs=None, labels=batch_labels, mask=None, loss=None,
-                                      step=current_step)
-                callbacks.on_epoch_end(epoch=None)
+        for current_epoch in range(epoch_start, total_epochs + 1):
+            callbacks.on_epoch_start(phase="process", epoch=current_epoch)
+            provider = self.ctx["providers"][self.split_name]
+            for current_step, (batch_inputs, batch_labels) in enumerate(provider):
+                current_step = current_step + 1
+                callbacks.on_step(inputs=batch_inputs, outputs=None, labels=batch_labels, mask=None, loss=None,
+                                  step=current_step)
+            callbacks.on_epoch_end(epoch=current_epoch)
         logger.info("Finished processing for the experiment '%s' ", self.ctx["config"]["name"])
