@@ -32,7 +32,7 @@ class Trainer(object):
         if saver is None:
             saver = NoopSaver()
         if step is None:
-            step = TrainingStep()
+            step = self.ctx["step_fn"]
         epoch_start = self.ctx["epoch_start"]
         if len(callbacks) == 0:
             logger.info("No callbacks or saver registered!")

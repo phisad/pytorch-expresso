@@ -6,6 +6,7 @@ from torch.utils import data
 import os
 import logging
 
+from torchexpresso import steps
 from torchexpresso import savers
 
 logger = logging.getLogger(__file__)
@@ -20,6 +21,21 @@ class ContextLoader:
         else:
             device_name = "cuda:0" if cuda.is_available() else "cpu"
         return torch.device(device_name)
+
+    @staticmethod
+    def load_step_fn(step_config):
+        if "kwargs" in step_config:
+            return ContextLoader.load_step_config_dynamically(step_config["package"], step_config["class"],
+                                                              step_config["kwargs"])
+        return ContextLoader.load_step_config_dynamically(step_config["package"], step_config["class"])
+
+    @staticmethod
+    def load_step_config_dynamically(python_package, python_class, step_kwargs=None):
+        step_package = __import__(python_package, fromlist=python_class)
+        step_class = getattr(step_package, python_class)
+        if step_kwargs is None:
+            return step_class()
+        return step_class(**step_kwargs)
 
     @staticmethod
     def load_loss_fn(loss_config):
@@ -190,18 +206,25 @@ class TrainingContext:
             # Mask padding_value=0 for loss computation
             loss_fn = torch.nn.CrossEntropyLoss(ignore_index=0)
 
+        """ Load and setup the step function """
+        if "step_fn" in experiment_config["params"]:
+            step_fn = ContextLoader.load_step_fn(experiment_config["params"]["step_fn"])
+        else:
+            step_fn = steps.TrainingStep()
+
         """ Load the data providers """
         providers = ContextLoader.load_providers_from_config(experiment_config, split_names, device)
 
-        return cls(experiment_config, comet, model, optimizer, loss_fn, providers, epoch_start, device)
+        return cls(experiment_config, comet, model, optimizer, loss_fn, step_fn, providers, epoch_start, device)
 
-    def __init__(self, config, comet, model, optimizer, loss_fn, providers, epoch_start, device):
+    def __init__(self, config, comet, model, optimizer, loss_fn, step_fn, providers, epoch_start, device):
         self.holder = dict()
         self.holder["config"] = config
         self.holder["comet"] = comet
         self.holder["model"] = model
         self.holder["optimizer"] = optimizer
         self.holder["loss_fn"] = loss_fn
+        self.holder["step_fn"] = step_fn
         self.holder["providers"] = providers
         self.holder["epoch_start"] = epoch_start
         self.holder["device"] = device
