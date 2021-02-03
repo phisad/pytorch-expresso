@@ -102,6 +102,16 @@ class MultiLabelTrainingStep(TrainingStep):
         For example in the detection task there might be multiple classes on the same image.
 
         This is technically performing N (number of labels) individual binary classifications.
+
+        Simply configure the loss_fn for this with the default TrainingStep:
+
+            "loss_fn": {
+              "package": "torch.nn",
+              "class": "BCEWithLogitsLoss",
+              "kwargs": {
+                "reduction": "sum"
+              }
+            }
     """
 
 

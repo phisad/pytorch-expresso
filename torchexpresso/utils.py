@@ -112,6 +112,10 @@ def pad_inputs(inputs: list, max_length: int, pad_value, dtype, device):
     return inputs_padded
 
 
+def load_image_file_names(images_directory, file_ending=".png"):
+    return [file_name for file_name in os.listdir(images_directory) if file_name.endswith(file_ending)]
+
+
 def load_image_from_dir(image_directory, image_file_name, image_transforms=None):
     image_path = os.path.join(image_directory, image_file_name)
     with Image.open(image_path) as image:
