@@ -65,16 +65,18 @@ def load_json_from(directory_or_file, lookup_filename=None):
     return json_content
 
 
-def store_json_to(json_content, directory_or_file, lookup_filename=None):
+def store_json_to(json_content, directory_or_file, lookup_filename=None,
+                  json_indent=4, json_sort_keys=True, verbose=False):
     """
         @param json_content: the json data to store
         @param directory_or_file: to look for the source file
         @param lookup_filename: the filename to look for when a directory is given
     """
     file_path = determine_file_path(directory_or_file, lookup_filename, to_read=False)
-    print("Persisting JSON to " + file_path)
+    if verbose:
+        print("Persisting JSON to " + file_path)
     with open(file_path, "w") as json_file:
-        json.dump(json_content, json_file, indent=4, sort_keys=True)
+        json.dump(json_content, json_file, indent=json_indent, sort_keys=json_sort_keys)
     return file_path
 
 

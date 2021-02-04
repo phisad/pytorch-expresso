@@ -54,14 +54,18 @@ class ContextLoader:
 
     @staticmethod
     def load_model_from_config(model_config, task):
+        model_params = None
+        if "params" in model_config:
+            model_params = model_config["params"]
         return ContextLoader.load_model_dynamically(model_config["package"], model_config["class"],
-                                                    model_config["params"],
-                                                    task)
+                                                    model_params, task)
 
     @staticmethod
     def load_model_dynamically(python_package, python_class, model_params, task):
         model_package = __import__(python_package, fromlist=python_class)
         model_class = getattr(model_package, python_class)
+        if model_params is None:
+            return model_class(task)
         return model_class(task, model_params)
 
     @staticmethod
@@ -159,9 +163,11 @@ def log_config(comet, experiment_config):
     if "params" in experiment_config:
         comet.log_parameters(apply_prefix(experiment_config["params"], "exp"))
     if "model" in experiment_config:
-        comet.log_parameters(apply_prefix(experiment_config["model"]["params"], "model"))
+        if "params" in experiment_config["model"]:
+            comet.log_parameters(apply_prefix(experiment_config["model"]["params"], "model"))
     if "dataset" in experiment_config:
-        comet.log_parameters(apply_prefix(experiment_config["dataset"]["params"], "ds"))
+        if "params" in experiment_config["dataset"]:
+            comet.log_parameters(apply_prefix(experiment_config["dataset"]["params"], "ds"))
     if "task" in experiment_config:
         comet.log_parameters(apply_prefix(experiment_config["task"], "task"))
 
