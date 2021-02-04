@@ -55,6 +55,9 @@ class CallbackRegistry(Callback):
         for c in self.callbacks.values():
             c.on_epoch_end(epoch)
 
+    def __contains__(self, o):
+        return self.callbacks.__contains__(o)
+
     def __getitem__(self, key):
         return self.callbacks[key]
 
