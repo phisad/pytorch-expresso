@@ -11,6 +11,14 @@ from torchexpresso import savers
 
 logger = logging.getLogger(__file__)
 
+PARAM_DRY_RUN = "dry_run"
+
+
+def is_dryrun(exp_params):
+    if PARAM_DRY_RUN in exp_params:
+        return exp_params[PARAM_DRY_RUN]
+    return False
+
 
 class ContextLoader:
 
@@ -245,6 +253,9 @@ class TrainingContext:
     def __getitem__(self, item):
         return self.holder[item]
 
+    def is_dryrun(self):
+        return is_dryrun(self.holder["config"]["params"])
+
 
 class PredictionContext:
 
@@ -282,6 +293,9 @@ class PredictionContext:
     def __getitem__(self, item):
         return self.holder[item]
 
+    def is_dryrun(self):
+        return is_dryrun(self.holder["config"]["params"])
+
 
 class ProcessorContext:
 
@@ -310,3 +324,6 @@ class ProcessorContext:
 
     def __getitem__(self, item):
         return self.holder[item]
+
+    def is_dryrun(self):
+        return is_dryrun(self.holder["config"]["params"])

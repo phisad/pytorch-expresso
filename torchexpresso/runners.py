@@ -37,12 +37,17 @@ class Trainer(object):
         if len(callbacks) == 0:
             logger.info("No callbacks or saver registered!")
 
+        if self.ctx.is_dryrun():
+            logger.info("Detected dry run mode. Performing a single episode step only.")
+
         """ Perform the training and validation """
         total_epochs = self.ctx["config"]["params"]["num_epochs"]
         for epoch in range(epoch_start, total_epochs + 1):
             self.__train(epoch, callbacks, step)
             self.__validate(epoch, callbacks, step)
             saver.save_checkpoint_if_best(self.ctx["model"], self.ctx["optimizer"], epoch, callbacks)
+            if self.ctx.is_dryrun():
+                break
         logger.info("Finished training for the experiment '%s' ", self.ctx["config"]["name"])
 
     def __validate(self, current_epoch, callbacks, step: TrainingStep):
@@ -74,6 +79,8 @@ class Trainer(object):
                 self.ctx["optimizer"].step()
             callbacks.on_step(inputs=batch_inputs, outputs=batch_outputs, labels=batch_labels,
                               mask=None, loss=loss, step=current_step)
+            if self.ctx.is_dryrun():
+                break
         print()
         callbacks.on_epoch_end(epoch=current_epoch)
 
@@ -99,6 +106,8 @@ class Predictor(object):
             callbacks = CallbackRegistry()
         if step is None:
             step = Step()
+        if self.ctx.is_dryrun():
+            logger.info("Detected dry run mode. Performing a single step only.")
         """ Perform the test """
         self.ctx["model"].eval()
         with self.ctx["comet"].test(), torch.no_grad():
@@ -111,6 +120,8 @@ class Predictor(object):
                                                            step=current_step)
                 callbacks.on_step(inputs=batch_inputs, outputs=batch_outputs, labels=batch_labels, mask=None, loss=None,
                                   step=current_step)
+                if self.ctx.is_dryrun():
+                    break
             callbacks.on_epoch_end(epoch=None)
 
 
@@ -151,6 +162,9 @@ class Processor(object):
         if len(callbacks) == 0:
             logger.info("No callbacks or saver registered!")
 
+        if self.ctx.is_dryrun():
+            logger.info("Detected dry run mode. Performing a single episode step only.")
+
         """ Perform the processing """
         for current_epoch in range(epoch_start, total_epochs + 1):
             callbacks.on_epoch_start(phase="process", epoch=current_epoch)
@@ -159,5 +173,9 @@ class Processor(object):
                 current_step = current_step + 1
                 callbacks.on_step(inputs=batch_inputs, outputs=None, labels=batch_labels, mask=None, loss=None,
                                   step=current_step)
+                if self.ctx.is_dryrun():
+                    break
             callbacks.on_epoch_end(epoch=current_epoch)
+            if self.ctx.is_dryrun():
+                break
         logger.info("Finished processing for the experiment '%s' ", self.ctx["config"]["name"])
