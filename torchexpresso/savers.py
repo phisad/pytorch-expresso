@@ -42,15 +42,15 @@ class CheckpointSaver(Saver):
     def save_checkpoint_if_best(self, model, optimizer, epoch, metrics):
         epoch_value = metrics[self.metric].to_value()
         if self.comparator(epoch_value, self.best_value):
-            print("Save checkpoint at epoch %s: epoch_value %s best_value (%.3f %s %.3f) [%s]" %
-                  (str(epoch), self.comparator_string, epoch_value, self.comparator_string, self.best_value,
-                   self.checkpoint_dir))
+            logger.info("Save checkpoint at epoch %s: epoch_value %s best_value (%.3f %s %.3f) [%s]" %
+                        (str(epoch), self.comparator_string, epoch_value, self.comparator_string, self.best_value,
+                         self.checkpoint_dir))
             self.best_value = epoch_value
             self.save_checkpoint(model, optimizer, epoch)
 
     def save_checkpoint(self, model, optimizer, epoch):
         if not os.path.exists(self.checkpoint_dir):
-            logger.info("Create experiment checkpoint directory at %s", self.checkpoint_dir)
+            logger.info("Created experiment checkpoint directory at %s", self.checkpoint_dir)
             os.makedirs(self.checkpoint_dir)
         torch.save({
             'epoch': epoch,

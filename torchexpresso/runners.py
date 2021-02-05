@@ -65,9 +65,12 @@ class Trainer(object):
         step.on_epoch_start(phase=current_phase, epoch=current_epoch)
         split_name = self.train_split if current_phase == "train" else self.dev_split
         provider = self.ctx["providers"][split_name]
+        # TODO: Log first step and then every n seconds
         for current_step, (batch_inputs, batch_labels) in enumerate(provider):
             current_step = current_step + 1
-            print("%s epoch %s: Step %s" % (current_phase, current_epoch, current_step), end="\r")
+            # TODO: Maybe use "even nicer" python format with padding
+            logger.info("Running \t [phase: %s] \t [epoch: %s] \t [step: %s]",
+                        current_phase, current_epoch, current_step)
             if current_phase == "train":
                 self.ctx["optimizer"].zero_grad()
             batch_inputs = step.prepare(self.ctx["model"], batch_inputs, self.ctx["device"], step=current_step)
@@ -81,7 +84,6 @@ class Trainer(object):
                               mask=None, loss=loss, step=current_step)
             if self.ctx.is_dryrun():
                 break
-        print()
         callbacks.on_epoch_end(epoch=current_epoch)
 
 
