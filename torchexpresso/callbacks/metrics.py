@@ -13,14 +13,20 @@ class Metric(Callback):
         pass
 
 
-class AverageMetricsMetric(Metric):
+class MetricsMetric(Metric):
+    """
+        Marker class for a metric operating on other metrics, which should have been loaded and calculated before.
+    """
+
+
+class AverageMetricsMetric(MetricsMetric):
     """
     Register multiple metrics and average their values on_epoch_end
     """
 
     def __init__(self, experiment, name, metrics: list, on_phase=None):
+        super().__init__(name)
         self.experiment = experiment
-        self.name = name
         self.metrics = metrics
         self.on_phase = on_phase
         self.current_phase = None
@@ -49,10 +55,10 @@ Common Metrics
 class AverageLossMetric(Metric):
 
     def __init__(self, experiment, name="epoch_loss", on_phase=None, index=None, context=None):
+        super().__init__(name)
         self.experiment = experiment
         self.index = index
         self.context = context
-        self.name = name
         self.value = 0
         self.total = 0
         self.on_phase = on_phase
@@ -100,10 +106,10 @@ class AverageClassActivation(Metric):
     """
 
     def __init__(self, experiment, name="epoch_class_activation", on_phase=None, index=None, context=None):
+        super().__init__(name)
         self.experiment = experiment
         self.index = index
         self.context = context
-        self.name = name
         self.value = 0
         self.total = 0
         self.on_phase = on_phase
@@ -151,10 +157,10 @@ class BinaryAccuracyMetric(Metric):
     """
 
     def __init__(self, experiment, name="epoch_binary_accuracy", on_phase=None, index=None, context=None):
+        super().__init__(name)
         self.experiment = experiment
         self.index = index
         self.context = context
-        self.name = name
         self.value = 0
         self.total = 0
         self.on_phase = on_phase
@@ -201,10 +207,10 @@ class BinaryAccuracyMetric(Metric):
 class CategoricalAccuracyMetric(Metric):
 
     def __init__(self, experiment, name="epoch_accuracy", on_phase=None, index=None, context=None):
+        super().__init__(name)
         self.experiment = experiment
         self.index = index
         self.context = context
-        self.name = name
         self.value = 0
         self.total = 0
         self.on_phase = on_phase

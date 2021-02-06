@@ -8,6 +8,9 @@ class Callback(object):
     Base class for callbacks.
     """
 
+    def __init__(self, name):
+        self.name = name
+
     def on_epoch_start(self, phase, epoch):
         pass
 
@@ -25,7 +28,8 @@ class CallbackRegistry(Callback):
         Register one or more callbacks for callback method invocation. Keeps the order of added callbacks.
     """
 
-    def __init__(self):
+    def __init__(self, name="registry"):
+        super().__init__(name)
         self.callbacks = OrderedDict()
 
     def on_epoch_start(self, phase, epoch):

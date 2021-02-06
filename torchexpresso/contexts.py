@@ -5,6 +5,11 @@ from torch import cuda
 from torch.utils import data
 import os
 import logging
+from inspect import signature
+
+from torchexpresso.callbacks.metrics import AverageLossMetric
+
+from torchexpresso.callbacks import CallbackRegistry
 
 from torchexpresso import steps
 from torchexpresso import savers
@@ -59,6 +64,54 @@ class ContextLoader:
         if loss_kwargs is None:
             return loss_class()
         return loss_class(**loss_kwargs)
+
+    @staticmethod
+    def load_callbacks_from_config(exp_config, comet):
+        callbacks = CallbackRegistry()
+        # Note: The ordering actually matters!
+        if "callbacks" in exp_config:
+            clb_configs = exp_config["callbacks"]
+            for clb_config in clb_configs:
+                # Special handler for callbacks merger
+                if "kwargs" in clb_config:
+                    clb_kwargs = clb_config["kwargs"]
+                    if "metrics" in clb_kwargs:
+                        # We need to get the metrics from the registry
+                        ref_metrics = [callbacks[ref] for ref in clb_kwargs["metrics"]]
+                        # We replace the strings with the instances (now it is loadable dynamically)
+                        clb_kwargs["metrics"] = ref_metrics
+                clb = ContextLoader.load_callback(clb_config, comet)
+                callbacks[clb.name] = clb  # Every callback needs a name
+        else:
+            # TODO do we want to set default callbacks?
+            loss_default = AverageLossMetric(comet)
+            callbacks[loss_default.name] = loss_default
+        return callbacks
+
+    @staticmethod
+    def load_callback(clb_config, comet):
+        if "kwargs" in clb_config:
+            return ContextLoader.load_callback_dynamically(clb_config["package"], clb_config["class"], comet,
+                                                           clb_config["kwargs"])
+        return ContextLoader.load_callback_dynamically(clb_config["package"], clb_config["class"], comet)
+
+    @staticmethod
+    def load_callback_dynamically(python_package, python_class, comet, clb_kwargs=None):
+        clb_package = __import__(python_package, fromlist=python_class)
+        clb_class = getattr(clb_package, python_class)
+        inject_comet = False
+        sig = signature(clb_class)
+        for p in sig.parameters.values():
+            if p.name in ["comet", "experiment"]:
+                inject_comet = True
+                break
+        if clb_kwargs is None:
+            if inject_comet:
+                return clb_class(comet)
+            return clb_class()
+        if inject_comet:
+            return clb_class(comet, **clb_kwargs)
+        return clb_class(**clb_kwargs)
 
     @staticmethod
     def load_model_from_config(model_config, task):
@@ -188,20 +241,49 @@ def log_checkpoint(comet, checkpoint):
         comet.log_other("checkpoint_arch", checkpoint["arch"])
 
 
-class TrainingContext:
+class ExperimentContext:
 
     @classmethod
     def from_config(cls, experiment_config, split_names):
-        """ Create a training context from the config"""
+        """ Create a experiment context from the config"""
 
         """ Load and setup the cometml experiment """
         comet = ContextLoader.load_cometml_experiment(experiment_config["cometml"], experiment_config["name"],
                                                       experiment_config["tags"])
         log_config(comet, experiment_config)
 
+        """ Load the callbacks """
+        callbacks = ContextLoader.load_callbacks_from_config(experiment_config, comet)
+
+        """ Load and setup the device """
+        device = ContextLoader.load_device(experiment_config["params"]["cpu_only"])
+
+        """ Load the data providers """
+        providers = ContextLoader.load_providers_from_config(experiment_config, split_names, device)
+
+        return cls(experiment_config, comet, device, providers, callbacks)
+
+    def __init__(self, config, comet, device, providers, callbacks):
+        self.holder = dict()
+        self.holder["config"] = config
+        self.holder["comet"] = comet
+        self.holder["device"] = device
+        self.holder["providers"] = providers
+        self.holder["callbacks"] = callbacks
+
+    def __getitem__(self, item):
+        return self.holder[item]
+
+
+class TrainingContext:
+
+    @classmethod
+    def from_config(cls, experiment_config, split_names):
+        """ Create a training context from the config"""
+        experiment_context = ExperimentContext.from_config(experiment_config, split_names)
+
         """ Load and setup model and optimizer"""
         epoch_start = 1
-        device = ContextLoader.load_device(experiment_config["params"]["cpu_only"])
         model = ContextLoader.load_model_from_config(experiment_config["model"], experiment_config["task"])
 
         """ Handle optional resume """
@@ -210,10 +292,10 @@ class TrainingContext:
             checkpoint = savers.CheckpointSaver.load_checkpoint(model,
                                                                 experiment_config["params"]["checkpoint_dir"],
                                                                 experiment_config["name"])
-            log_checkpoint(comet, checkpoint)
+            log_checkpoint(experiment_context["comet"], checkpoint)
             epoch_start = checkpoint["epoch"] + 1
             print("Resume training from epoch: {:d}".format(epoch_start))
-        model.to(device)
+        model.to(experiment_context["device"])
 
         # Load optimizer only now to guarantee that the parameters are on the same device
         optimizer = torch.optim.Adam(model.parameters())
@@ -233,22 +315,16 @@ class TrainingContext:
         else:
             step_fn = steps.TrainingStep()
 
-        """ Load the data providers """
-        providers = ContextLoader.load_providers_from_config(experiment_config, split_names, device)
+        return cls(experiment_context, model, optimizer, loss_fn, step_fn, epoch_start)
 
-        return cls(experiment_config, comet, model, optimizer, loss_fn, step_fn, providers, epoch_start, device)
-
-    def __init__(self, config, comet, model, optimizer, loss_fn, step_fn, providers, epoch_start, device):
+    def __init__(self, experiment_context, model, optimizer, loss_fn, step_fn, epoch_start):
         self.holder = dict()
-        self.holder["config"] = config
-        self.holder["comet"] = comet
         self.holder["model"] = model
         self.holder["optimizer"] = optimizer
         self.holder["loss_fn"] = loss_fn
         self.holder["step_fn"] = step_fn
-        self.holder["providers"] = providers
         self.holder["epoch_start"] = epoch_start
-        self.holder["device"] = device
+        self.holder = {**self.holder, **experiment_context.holder}
 
     def __getitem__(self, item):
         return self.holder[item]
@@ -262,33 +338,21 @@ class PredictionContext:
     @classmethod
     def from_config(cls, experiment_config, split_names):
         """ Create a prediction context from the config"""
-
-        """ Load and setup the cometml experiment """
-        comet = ContextLoader.load_cometml_experiment(experiment_config["cometml"], experiment_config["name"],
-                                                      experiment_config["tags"])
-        log_config(comet, experiment_config)
-
+        experiment_context = ExperimentContext.from_config(experiment_config, split_names)
         """ Load and setup the model """
-        device = ContextLoader.load_device(experiment_config["params"]["cpu_only"])
         model = ContextLoader.load_model_from_config(experiment_config["model"], experiment_config["task"])
         if "checkpoint_dir" in experiment_config["params"]:
             checkpoint = savers.CheckpointSaver.load_checkpoint(model,
                                                                 experiment_config["params"]["checkpoint_dir"],
                                                                 experiment_config["name"])
-            log_checkpoint(comet, checkpoint)
-        model.to(device)
+            log_checkpoint(experiment_context["comet"], checkpoint)
+        model.to(experiment_context["device"])
+        return cls(experiment_context, model)
 
-        """ Load the data providers """
-        providers = ContextLoader.load_providers_from_config(experiment_config, split_names, device)
-        return cls(experiment_config, comet, model, providers, device)
-
-    def __init__(self, config, comet, model, providers, device):
+    def __init__(self, experiment_context, model):
         self.holder = dict()
-        self.holder["config"] = config
-        self.holder["comet"] = comet
         self.holder["model"] = model
-        self.holder["providers"] = providers
-        self.holder["device"] = device
+        self.holder = {**self.holder, **experiment_context.holder}
 
     def __getitem__(self, item):
         return self.holder[item]
@@ -302,25 +366,12 @@ class ProcessorContext:
     @classmethod
     def from_config(cls, experiment_config, split_names):
         """ Create a processor context from the config"""
+        experiment_context = ExperimentContext.from_config(experiment_config, split_names)
+        return cls(experiment_context)
 
-        """ Load and setup the cometml experiment """
-        comet = ContextLoader.load_cometml_experiment(experiment_config["cometml"], experiment_config["name"],
-                                                      experiment_config["tags"])
-        log_config(comet, experiment_config)
-
-        """ Load and setup the model """
-        device = ContextLoader.load_device(experiment_config["params"]["cpu_only"])
-
-        """ Load the data providers """
-        providers = ContextLoader.load_providers_from_config(experiment_config, split_names, device)
-        return cls(experiment_config, comet, providers, device)
-
-    def __init__(self, config, comet, providers, device):
+    def __init__(self, experiment_context):
         self.holder = dict()
-        self.holder["config"] = config
-        self.holder["comet"] = comet
-        self.holder["providers"] = providers
-        self.holder["device"] = device
+        self.holder = {**self.holder, **experiment_context.holder}
 
     def __getitem__(self, item):
         return self.holder[item]

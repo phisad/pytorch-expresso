@@ -28,7 +28,8 @@ class Trainer(object):
     def perform(self, callbacks: CallbackRegistry = None, saver: Saver = None, step: TrainingStep = None):
         logger.info("Perform training for the experiment '%s' ", self.ctx["config"]["name"])
         if callbacks is None:
-            callbacks = CallbackRegistry()
+            logger.info("Fallback to configured callbacks.")
+            callbacks = self.ctx["callbacks"]
         if saver is None:
             saver = NoopSaver()
         if step is None:
@@ -65,12 +66,8 @@ class Trainer(object):
         step.on_epoch_start(phase=current_phase, epoch=current_epoch)
         split_name = self.train_split if current_phase == "train" else self.dev_split
         provider = self.ctx["providers"][split_name]
-        # TODO: Log first step and then every n seconds
         for current_step, (batch_inputs, batch_labels) in enumerate(provider):
             current_step = current_step + 1
-            # TODO: Maybe use "even nicer" python format with padding
-            logger.info("Running \t [phase: %s] \t [epoch: %s] \t [step: %s]",
-                        current_phase, current_epoch, current_step)
             if current_phase == "train":
                 self.ctx["optimizer"].zero_grad()
             batch_inputs = step.prepare(self.ctx["model"], batch_inputs, self.ctx["device"], step=current_step)
@@ -105,7 +102,8 @@ class Predictor(object):
     def perform(self, callbacks: CallbackRegistry = None, step: Step = None):
         logger.info("Perform prediction for the experiment '%s' on '%s'", self.ctx["config"]["name"], self.split_name)
         if callbacks is None:
-            callbacks = CallbackRegistry()
+            logger.info("Fallback to configured callbacks.")
+            callbacks = self.ctx["callbacks"]
         if step is None:
             step = Step()
         if self.ctx.is_dryrun():
@@ -150,7 +148,8 @@ class Processor(object):
     def perform(self, callbacks: CallbackRegistry = None):
         logger.info("Perform processing for the experiment '%s' on '%s'", self.ctx["config"]["name"], self.split_name)
         if callbacks is None:
-            callbacks = CallbackRegistry()
+            logger.info("Fallback to configured callbacks.")
+            callbacks = self.ctx["callbacks"]
 
         epoch_start = 1
         total_epochs = 1
