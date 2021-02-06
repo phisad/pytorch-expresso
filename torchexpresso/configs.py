@@ -31,7 +31,7 @@ class ExperimentConfigLoader:
 
     def __init__(self, config_top_dir: str, ref_words: list = None):
         self.config_top_dir = config_top_dir
-        self.ref_words = ref_words or ["model", "dataset", "task", "env"]
+        self.ref_words = ref_words or ["model", "dataset", "task", "env", "callbacks", "savers"]
         """ Optionals """
         self.experiment_params = None
         self.dataset_params = None
@@ -140,6 +140,8 @@ class ExperimentConfigLoader:
                 if isinstance(key_value, dict):
                     # if the value is a dict with values that refer to configs
                     config[key] = self.__expand_dict_values(config_top_directory_or_file, loaded_config[key])
+                elif isinstance(key_value, list):
+                    config[key] = key_value  # simply copy
                 elif key_value.endswith(".json"):
                     file_name = os.path.basename(loaded_config[key])[:-len(".json")]
                     config[key] = self.__load_json_config_as_dict(config_top_directory_or_file, loaded_config[key])
