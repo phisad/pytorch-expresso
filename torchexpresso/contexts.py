@@ -17,6 +17,13 @@ from torchexpresso import savers
 logger = logging.getLogger(__file__)
 
 PARAM_DRY_RUN = "dry_run"
+"""Optional experiment param flag to run only one step for a single episode """
+
+PARAM_CPU_ONLY = "cpu_only"
+"""Optional experiment param flag to force to use the CPU """
+
+PARAM_RESUME = "resume"
+"""Optional experiment param flag to resume training from the latest checkpoint """
 
 
 def is_dryrun(exp_params):
@@ -26,6 +33,13 @@ def is_dryrun(exp_params):
 
 
 class ContextLoader:
+
+    @staticmethod
+    def load_device_from_config(experiment_config):
+        cpu_only = False
+        if PARAM_CPU_ONLY in experiment_config["params"]:
+            cpu_only = experiment_config["params"][PARAM_CPU_ONLY]
+        return ContextLoader.load_device(cpu_only)
 
     @staticmethod
     def load_device(force_cpu=False):
@@ -169,9 +183,11 @@ class ContextLoader:
 
     @staticmethod
     def load_dataset_from_config(dataset_config, task, split_name, device):
+        ds_params = None
+        if "params" in dataset_config:
+            ds_params = dataset_config["params"]
         return ContextLoader.load_dataset_dynamically(dataset_config["package"], dataset_config["class"],
-                                                      dataset_config["params"],
-                                                      task, split_name, device)
+                                                      ds_params, task, split_name, device)
 
     @staticmethod
     def load_dataset_dynamically(python_package, python_class, dataset_params, task, split_name, device):
@@ -180,7 +196,7 @@ class ContextLoader:
         return dataset_class(task, split_name, dataset_params, device)
 
     @staticmethod
-    def load_cometml_experiment(comet_config, experiment_name, tags):
+    def load_cometml_experiment(comet_config, experiment_name):
         # Optionals
         cometml_workspace = None
         cometml_project = None
@@ -207,7 +223,6 @@ class ContextLoader:
                                              api_key=comet_config["api_key"]
                                              )
         experiment.set_name(experiment_name)
-        experiment.add_tags(tags)
         return experiment
 
 
@@ -248,15 +263,16 @@ class ExperimentContext:
         """ Create a experiment context from the config"""
 
         """ Load and setup the cometml experiment """
-        comet = ContextLoader.load_cometml_experiment(experiment_config["cometml"], experiment_config["name"],
-                                                      experiment_config["tags"])
+        comet = ContextLoader.load_cometml_experiment(experiment_config["cometml"], experiment_config["name"])
+        if "tags" in experiment_config:
+            comet.add_tags(experiment_config["tags"])
         log_config(comet, experiment_config)
 
         """ Load the callbacks """
         callbacks = ContextLoader.load_callbacks_from_config(experiment_config, comet)
 
         """ Load and setup the device """
-        device = ContextLoader.load_device(experiment_config["params"]["cpu_only"])
+        device = ContextLoader.load_device_from_config(experiment_config)
 
         """ Load the data providers """
         providers = ContextLoader.load_providers_from_config(experiment_config, split_names, device)
@@ -287,7 +303,7 @@ class TrainingContext:
         model = ContextLoader.load_model_from_config(experiment_config["model"], experiment_config["task"])
 
         """ Handle optional resume """
-        is_resume = "resume" in experiment_config["params"] and experiment_config["params"]["resume"]
+        is_resume = PARAM_RESUME in experiment_config["params"] and experiment_config["params"][PARAM_RESUME]
         if is_resume:
             checkpoint = savers.CheckpointSaver.load_checkpoint(model,
                                                                 experiment_config["params"]["checkpoint_dir"],
