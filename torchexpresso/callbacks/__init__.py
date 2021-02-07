@@ -57,5 +57,8 @@ class CallbackRegistry(Callback):
             raise Exception("Value to add is no Callback, but %s" % value.__class__)
         self.callbacks[key] = value
 
+    def __iter__(self):
+        return self.callbacks.__iter__()
+    
     def __len__(self):
         return len(self.callbacks)
