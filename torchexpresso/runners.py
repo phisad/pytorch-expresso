@@ -28,8 +28,9 @@ class Trainer(object):
     def perform(self, callbacks: CallbackRegistry = None, saver: Saver = None, step: TrainingStep = None):
         logger.info("Perform training for the experiment '%s' ", self.ctx["config"]["name"])
         if callbacks is None:
-            logger.info("Fallback to configured callbacks.")
+            logger.info("Using configured callbacks.")
             callbacks = self.ctx["callbacks"]
+            [logger.info("Detected callback: %s", clb) for clb in callbacks]
         if saver is None:
             saver = NoopSaver()
         if step is None:
@@ -102,8 +103,9 @@ class Predictor(object):
     def perform(self, callbacks: CallbackRegistry = None, step: Step = None):
         logger.info("Perform prediction for the experiment '%s' on '%s'", self.ctx["config"]["name"], self.split_name)
         if callbacks is None:
-            logger.info("Fallback to configured callbacks.")
+            logger.info("Using configured callbacks.")
             callbacks = self.ctx["callbacks"]
+            [logger.info("Detected callback: %s", clb) for clb in callbacks]
         if step is None:
             step = Step()
         if self.ctx.is_dryrun():
@@ -148,8 +150,9 @@ class Processor(object):
     def perform(self, callbacks: CallbackRegistry = None):
         logger.info("Perform processing for the experiment '%s' on '%s'", self.ctx["config"]["name"], self.split_name)
         if callbacks is None:
-            logger.info("Fallback to configured callbacks.")
+            logger.info("Using configured callbacks.")
             callbacks = self.ctx["callbacks"]
+            [logger.info("Detected callback: %s", clb) for clb in callbacks]
 
         epoch_start = 1
         total_epochs = 1
