@@ -1,0 +1,8 @@
+{
+  "api_key": "api-key",
+  "project_name": "project-name",
+  "workspace": "workspace-name",
+  "offline": false,
+  "offline_directory": "/offline/dir",
+  "offline_upload_command": "/usr/bin/python -m comet_ml.scripts.comet_upload <offline_directory>/<experiment_run>.zip"
+}
