@@ -1,4 +1,6 @@
+import comet_ml
 import torch
+import torch.nn.functional as functional
 
 from torchexpresso.callbacks import Callback
 
@@ -250,3 +252,52 @@ class CategoricalAccuracyMetric(Metric):
                 self.experiment.log_metric(self.name, self.to_value(), step=epoch)
         else:
             self.experiment.log_metric(self.name, self.to_value(), step=epoch)
+
+
+class CategoricalAccuracyMatrix(Callback):
+
+    def __init__(self, experiment, class_names, name="epoch_accuracy_matrix", on_phase=None, index=None):
+        super().__init__(name)
+        self.experiment = experiment
+        self.num_classes = len(class_names)
+        self.confusion_matrix = comet_ml.ConfusionMatrix(labels=class_names)
+        self.index = index
+        self.on_phase = on_phase
+        self.current_phase = None
+        self.labels = None
+        self.predictions = None
+
+    @torch.no_grad()
+    def on_epoch_start(self, phase, epoch):
+        self.current_phase = phase
+        self.labels = None
+        self.predictions = None
+
+    @torch.no_grad()
+    def on_step(self, inputs, outputs, labels, mask, loss, step):
+        """
+        @param labels: the true labels for the samples.
+        @param outputs: the raw output of the model. A winner function (np.argmax) is applied on compute_matrix()
+        """
+        if self.index is not None:
+            outputs = outputs[self.index]
+        if self.predictions is not None:
+            self.predictions = torch.cat((self.predictions, outputs.detach().clone().cpu()))
+        else:
+            self.predictions = outputs.detach().clone().cpu()
+        if self.labels is not None:
+            self.labels = torch.cat(
+                (self.labels, torch.stack([functional.one_hot(v, self.num_classes) for v in labels])))
+        else:
+            self.labels = torch.stack([functional.one_hot(v, self.num_classes) for v in labels])
+
+    @torch.no_grad()
+    def on_epoch_end(self, epoch):
+        self.confusion_matrix.compute_matrix(self.labels.cpu().numpy(), self.predictions.numpy())
+        if epoch:
+            matrix_title = "Confusion Matrix, Epoch #%s" % epoch
+            matrix_file = "%s-confusion-matrix-%03d.json" % (self.current_phase, epoch)
+        else:
+            matrix_title = "Confusion Matrix"
+            matrix_file = "%s-confusion-matrix.json" % self.current_phase
+        self.experiment.log_confusion_matrix(matrix=self.confusion_matrix, title=matrix_title, file_name=matrix_file)

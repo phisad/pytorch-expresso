@@ -129,5 +129,3 @@ dmypy.json
 .pyre/
 
 .idea
-
-/samples/mnist/mnist_data/
