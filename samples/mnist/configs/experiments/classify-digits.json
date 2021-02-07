@@ -1,16 +1,7 @@
 {
-  "params": {
-    "batch_size": 32,
-    "num_epochs": 10
-  },
-  "model": {
-    "package": "samples.mnist.models",
-    "class": "FNNClassifier"
-  },
-  "dataset": {
-    "package": "samples.mnist.providers",
-    "class": "MnistDataset"
-  },
+  "params": {"batch_size": 32, "num_epochs": 10},
+  "model": {"package": "samples.mnist.models", "class": "FNNClassifier"},
+  "dataset": {"package": "samples.mnist.providers", "class": "MnistDataset"},
   "task": {
     "input_type": "image",
     "output_type": "digit_class",
@@ -18,9 +9,6 @@
     "image_shape": [1, 28, 28]
   },
   "callbacks": [
-    {
-      "package": "torchexpresso.callbacks.logging",
-      "class": "RunningLogger"
-    }
+    {"package": "torchexpresso.callbacks.logging", "class": "RunningLogger"}
   ]
 }
