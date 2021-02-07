@@ -4,7 +4,9 @@ from torchexpresso.configs import ExperimentConfigLoader
 
 
 def perform_training():
-    config = ExperimentConfigLoader("configs").load("classify-digits", comet_user="phisad")
+    config = ExperimentConfigLoader("configs") \
+        .with_experiment_params(dry_run=True) \
+        .load("classify-digits", comet_user="phisad")
     Trainer.from_config(config, "train", "dev").perform()
 
 
