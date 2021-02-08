@@ -1,3 +1,5 @@
+from collections import OrderedDict
+
 import torch
 import logging
 import os
@@ -5,29 +7,100 @@ import os
 logger = logging.getLogger(__file__)
 
 
+def load_checkpoint(checkpoint_dir: str, file_name: str):
+    checkpoint_path = os.path.join(checkpoint_dir, "%s.pth.tar" % file_name)
+    return load_checkpoint_from_path(checkpoint_path)
+
+
+def load_checkpoint_from_path(checkpoint_path: str):
+    if not os.path.exists(checkpoint_path):
+        raise Exception("Cannot find checkpoint at %s", checkpoint_path)
+    checkpoint = torch.load(checkpoint_path)
+    return checkpoint
+
+
+def save_checkpoint(checkpoint_dir: str, file_name: str, checkpoint: dict):
+    if not os.path.exists(checkpoint_dir):
+        logger.info("Created experiment checkpoint directory at %s", checkpoint_dir)
+        os.makedirs(checkpoint_dir)
+    torch.save(checkpoint, os.path.join(checkpoint_dir, "%s.pth.tar" % file_name))
+
+
 class Saver(object):
 
-    def save_checkpoint_if_best(self, model, optimizer, epoch, metrics):
+    def __init__(self, name):
+        self.name = name
+
+    def on_epoch_end(self, model, optimizer, epoch, metrics):
         raise NotImplementedError()
 
-    def save_checkpoint(self, model, optimizer, epoch):
-        raise NotImplementedError()
+
+class SaverRegistry(Saver):
+    """
+        Register one or more callbacks for callback method invocation. Keeps the order of added callbacks.
+    """
+
+    def __init__(self, name="saver_registry"):
+        super().__init__(name)
+        self.savers = OrderedDict()
+
+    @torch.no_grad()
+    def on_epoch_end(self, model, optimizer, epoch, metrics):
+        for srv in self.savers.values():
+            srv.on_epoch_end(model, optimizer, epoch, metrics)
+
+    def __contains__(self, o):
+        return self.savers.__contains__(o)
+
+    def __getitem__(self, key):
+        return self.savers[key]
+
+    def __setitem__(self, key, value):
+        if not isinstance(value, Saver):
+            raise Exception("Value to add is no Saver, but %s" % value.__class__)
+        self.savers[key] = value
+
+    def __iter__(self):
+        return self.savers.__iter__()
+
+    def __len__(self):
+        return len(self.savers)
 
 
 class NoopSaver(Saver):
 
-    def save_checkpoint_if_best(self, model, optimizer, epoch, metrics):
-        pass
-
-    def save_checkpoint(self, model, optimizer, epoch):
+    def on_epoch_end(self, model, optimizer, epoch, metrics):
         pass
 
 
-class CheckpointSaver(Saver):
+class ModelSaver(Saver):
 
-    def __init__(self, checkpoint_top_dir, experiment_name, model_name, metric, mode="highest"):
-        self.checkpoint_dir = os.path.join(checkpoint_top_dir, experiment_name)
-        self.model_name = model_name
+    def __init__(self, model_config, task_config, checkpoint_dir, file_name="model", name="epoch_saver"):
+        super().__init__(name)
+        self.task_config = task_config
+        self.model_config = model_config
+        self.checkpoint_dir = checkpoint_dir
+        self.file_name = file_name
+
+    def on_epoch_end(self, model, optimizer, epoch, metrics):
+        save_checkpoint(self.checkpoint_dir, self.file_name, {
+            'cp-epoch': epoch,
+            'cp-model': self.model_config,
+            'cp-task': self.task_config,
+            'state_dict': model.state_dict(),
+            'optimizer': optimizer.state_dict(),
+        })
+
+
+class BestModelSaver(Saver):
+
+    def __init__(self, model_config, task_config, checkpoint_dir, metric,
+                 mode="highest", file_name="model_best", name="best_saver"):
+        super().__init__(name)
+        self.task_config = task_config
+        self.model_config = model_config
+        self.checkpoint_dir = checkpoint_dir
+        self.file_name = file_name
         self.metric = metric
         if mode == "highest":
             self.comparator = lambda x, y: x > y
@@ -39,34 +112,19 @@ class CheckpointSaver(Saver):
             self.best_value = math.inf
             self.comparator_string = "<"
 
-    def save_checkpoint_if_best(self, model, optimizer, epoch, metrics):
+    def on_epoch_end(self, model, optimizer, epoch, metrics):
         epoch_value = metrics[self.metric].to_value()
         if self.comparator(epoch_value, self.best_value):
             logger.info("Save checkpoint at epoch %s: epoch_value %s best_value (%.3f %s %.3f) [%s]" %
                         (str(epoch), self.comparator_string, epoch_value, self.comparator_string, self.best_value,
                          self.checkpoint_dir))
             self.best_value = epoch_value
-            self.save_checkpoint(model, optimizer, epoch)
-
-    def save_checkpoint(self, model, optimizer, epoch):
-        if not os.path.exists(self.checkpoint_dir):
-            logger.info("Created experiment checkpoint directory at %s", self.checkpoint_dir)
-            os.makedirs(self.checkpoint_dir)
-        torch.save({
-            'epoch': epoch,
-            'arch': self.model_name,
-            'state_dict': model.state_dict(),
-            'best_value': self.best_value,
-            'best_value_metric': self.metric,
-            'optimizer': optimizer.state_dict(),
-        }, os.path.join(self.checkpoint_dir, "model_best.pth.tar"))
-
-    @staticmethod
-    def load_checkpoint(model, checkpoint_dir, experiment_name):
-        experiment_checkpoint_dir = os.path.join(checkpoint_dir, experiment_name)
-        experiment_checkpoint_path = os.path.join(experiment_checkpoint_dir, "model_best.pth.tar")
-        if not os.path.exists(experiment_checkpoint_path):
-            raise Exception("Cannot find experiment checkpoint at %s", experiment_checkpoint_path)
-        checkpoint = torch.load(experiment_checkpoint_path)
-        model.load_state_dict(checkpoint['state_dict'], strict=False)
-        return checkpoint
+            save_checkpoint(self.checkpoint_dir, self.file_name, {
+                'cp-epoch': epoch,
+                'cp-model': self.model_config,
+                'cp-task': self.task_config,
+                'cp-value': self.best_value,
+                'cp-metric': self.metric,
+                'state_dict': model.state_dict(),
+                'optimizer': optimizer.state_dict(),
+            })

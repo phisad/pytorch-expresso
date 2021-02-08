@@ -12,7 +12,7 @@ from torchexpresso.callbacks.metrics import AverageLossMetric
 from torchexpresso.callbacks import CallbackRegistry
 
 from torchexpresso import steps
-from torchexpresso import savers
+from torchexpresso.savers import SaverRegistry, load_checkpoint_from_path
 
 logger = logging.getLogger(__file__)
 
@@ -128,6 +128,36 @@ class ContextLoader:
         return clb_class(**clb_kwargs)
 
     @staticmethod
+    def load_savers_from_config(exp_config):
+        savers = SaverRegistry()
+        # Note: The ordering actually matters!
+        if "savers" in exp_config:
+            svr_configs = exp_config["savers"]
+            for srv_config in svr_configs:
+                svr = ContextLoader.load_saver(srv_config, exp_config["model"], exp_config["task"])
+                savers[svr.name] = svr  # Every callback needs a name
+        else:
+            # TODO do we want to set default savers?
+            ...
+        return savers
+
+    @staticmethod
+    def load_saver(srv_config, model_config, task_config):
+        if "kwargs" in srv_config:
+            return ContextLoader.load_saver_dynamically(srv_config["package"], srv_config["class"],
+                                                        model_config, task_config, srv_config["kwargs"])
+        return ContextLoader.load_saver_dynamically(srv_config["package"], srv_config["class"],
+                                                    model_config, task_config)
+
+    @staticmethod
+    def load_saver_dynamically(python_package, python_class, model_config, task_config, svr_kwargs=None):
+        svr_package = __import__(python_package, fromlist=python_class)
+        svr_class = getattr(svr_package, python_class)
+        if svr_kwargs is None:
+            return svr_class(model_config, task_config)
+        return svr_class(model_config, task_config, **svr_kwargs)
+
+    @staticmethod
     def load_model_from_config(model_config, task):
         model_params = None
         if "params" in model_config:
@@ -144,7 +174,7 @@ class ContextLoader:
         return model_class(task, model_params)
 
     @staticmethod
-    def load_providers_from_config(experiment_config, split_names, device):
+    def load_providers_from_config(experiment_config, split_names: list, device):
         providers = dict()
         # Note: If there is an environment in the config, then we use that as the dataset 'split'
         if "env" in experiment_config:
@@ -250,16 +280,15 @@ def log_config(comet, experiment_config):
 
 def log_checkpoint(comet, checkpoint):
     if comet:
-        comet.log_other("checkpoint_epoch", checkpoint["epoch"])
-        comet.log_other("checkpoint_best_value", checkpoint["best_value"])
-        comet.log_other("checkpoint_best_value_metric", checkpoint["best_value_metric"])
-        comet.log_other("checkpoint_arch", checkpoint["arch"])
+        for entry_name in checkpoint:
+            if entry_name.startswith("cp-"):  # ckpt-param
+                comet.log_other(entry_name, checkpoint[entry_name])
 
 
 class ExperimentContext:
 
     @classmethod
-    def from_config(cls, experiment_config, split_names):
+    def from_config(cls, experiment_config, split_names: list):
         """ Create a experiment context from the config"""
 
         """ Load and setup the cometml experiment """
@@ -296,27 +325,35 @@ class TrainingContext:
     @classmethod
     def from_config(cls, experiment_config, split_names):
         """ Create a training context from the config"""
+
+        """ Load experiment context """
         experiment_context = ExperimentContext.from_config(experiment_config, split_names)
 
-        """ Load and setup model and optimizer"""
+        """ Load and setup model """
         epoch_start = 1
         model = ContextLoader.load_model_from_config(experiment_config["model"], experiment_config["task"])
 
         """ Handle optional resume """
         is_resume = PARAM_RESUME in experiment_config["params"] and experiment_config["params"][PARAM_RESUME]
         if is_resume:
-            checkpoint = savers.CheckpointSaver.load_checkpoint(model,
-                                                                experiment_config["params"]["checkpoint_dir"],
-                                                                experiment_config["name"])
-            log_checkpoint(experiment_context["comet"], checkpoint)
-            epoch_start = checkpoint["epoch"] + 1
+            """ Load the checkpoint """
+            ckpt = load_checkpoint_from_path(experiment_config["params"]["resume_checkpoint_path"])
+            log_checkpoint(experiment_context["comet"], ckpt)
+
+            # Note: In constrast to predict, we use the exp-model and exp-task
+            model.load_state_dict(ckpt['state_dict'], strict=False)
+
+            epoch_start = ckpt["cp-epoch"] + 1
             print("Resume training from epoch: {:d}".format(epoch_start))
         model.to(experiment_context["device"])
 
         # Load optimizer only now to guarantee that the parameters are on the same device
         optimizer = torch.optim.Adam(model.parameters())
         if is_resume:
-            optimizer.load_state_dict(checkpoint["optimizer"])
+            optimizer.load_state_dict(ckpt["optimizer"])
+
+        """ Load the savers """
+        savers = ContextLoader.load_savers_from_config(experiment_config)
 
         """ Load and setup the loss function """
         if "loss_fn" in experiment_config["params"]:
@@ -331,15 +368,16 @@ class TrainingContext:
         else:
             step_fn = steps.TrainingStep()
 
-        return cls(experiment_context, model, optimizer, loss_fn, step_fn, epoch_start)
+        return cls(experiment_context, model, optimizer, loss_fn, step_fn, epoch_start, savers)
 
-    def __init__(self, experiment_context, model, optimizer, loss_fn, step_fn, epoch_start):
+    def __init__(self, experiment_context, model, optimizer, loss_fn, step_fn, epoch_start, savers):
         self.holder = dict()
         self.holder["model"] = model
         self.holder["optimizer"] = optimizer
         self.holder["loss_fn"] = loss_fn
         self.holder["step_fn"] = step_fn
         self.holder["epoch_start"] = epoch_start
+        self.holder["savers"] = savers
         self.holder = {**self.holder, **experiment_context.holder}
 
     def __getitem__(self, item):
@@ -352,17 +390,23 @@ class TrainingContext:
 class PredictionContext:
 
     @classmethod
-    def from_config(cls, experiment_config, split_names):
+    def from_config(cls, experiment_config: dict, split_names: list, model_path: str):
         """ Create a prediction context from the config"""
+        if model_path is None:
+            raise Exception("Missing 'model_path' argument. Please provide a path to the model.")
+
+        """ Load experiment context """
         experiment_context = ExperimentContext.from_config(experiment_config, split_names)
-        """ Load and setup the model """
-        model = ContextLoader.load_model_from_config(experiment_config["model"], experiment_config["task"])
-        if "checkpoint_dir" in experiment_config["params"]:
-            checkpoint = savers.CheckpointSaver.load_checkpoint(model,
-                                                                experiment_config["params"]["checkpoint_dir"],
-                                                                experiment_config["name"])
-            log_checkpoint(experiment_context["comet"], checkpoint)
+
+        """ Load the checkpoint """
+        ckpt = load_checkpoint_from_path(model_path)
+        log_checkpoint(experiment_context["comet"], ckpt)
+
+        """ Load and setup the model from ckpt"""
+        model = ContextLoader.load_model_from_config(ckpt["cp-model"], ckpt["cp-task"])
+        model.load_state_dict(ckpt['state_dict'], strict=False)
         model.to(experiment_context["device"])
+
         return cls(experiment_context, model)
 
     def __init__(self, experiment_context, model):
@@ -382,7 +426,10 @@ class ProcessorContext:
     @classmethod
     def from_config(cls, experiment_config, split_names):
         """ Create a processor context from the config"""
+
+        """ Load experiment context """
         experiment_context = ExperimentContext.from_config(experiment_config, split_names)
+
         return cls(experiment_context)
 
     def __init__(self, experiment_context):

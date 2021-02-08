@@ -1,16 +1,15 @@
 import os
-from torchexpresso.runners import Trainer
+from torchexpresso.runners import Trainer, Predictor
 
 from torchexpresso.configs import ExperimentConfigLoader
 
 
-def perform_training():
+def perform_prediction():
     config = ExperimentConfigLoader("configs") \
         .with_experiment_params(dry_run=True) \
-        .with_placeholders(checkpoint_dir=os.getenv("CHECKPOINT_DIR")) \
         .load("classify-digits", comet_user=os.getenv("COMET_USER"))
-    Trainer.from_config(config, "train", "dev").perform()
+    Predictor.from_config(config, "test", os.getenv("MODEL_PATH")).perform()
 
 
 if __name__ == '__main__':
-    perform_training()
+    perform_prediction()

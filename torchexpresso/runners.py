@@ -27,17 +27,28 @@ class Trainer(object):
 
     def perform(self, callbacks: CallbackRegistry = None, saver: Saver = None, step: TrainingStep = None):
         logger.info("Perform training for the experiment '%s' ", self.ctx["config"]["name"])
+
         if callbacks is None:
-            logger.info("Using configured callbacks.")
             callbacks = self.ctx["callbacks"]
+
+        if len(callbacks) == 0:
+            logger.info("No callbacks registered!")
+        else:
+            logger.info("Using configured callbacks.")
             [logger.info("Detected callback: %s", clb) for clb in callbacks]
+
         if saver is None:
-            saver = NoopSaver()
+            saver = self.ctx["savers"]
+
+        if len(saver) == 0:
+            logger.info("No savers registered!")
+        else:
+            logger.info("Using configured savers.")
+            [logger.info("Detected saver: %s", svr) for svr in saver]
+
         if step is None:
             step = self.ctx["step_fn"]
         epoch_start = self.ctx["epoch_start"]
-        if len(callbacks) == 0:
-            logger.info("No callbacks or saver registered!")
 
         if self.ctx.is_dryrun():
             logger.info("Detected dry run mode. Performing a single episode step only.")
@@ -45,19 +56,19 @@ class Trainer(object):
         """ Perform the training and validation """
         total_epochs = self.ctx["config"]["params"]["num_epochs"]
         for epoch in range(epoch_start, total_epochs + 1):
-            self.__train(epoch, callbacks, step)
-            self.__validate(epoch, callbacks, step)
-            saver.save_checkpoint_if_best(self.ctx["model"], self.ctx["optimizer"], epoch, callbacks)
+            self.__epoch_train(epoch, callbacks, step)
+            self.__epoch_validate(epoch, callbacks, step)
+            saver.on_epoch_end(self.ctx["model"], self.ctx["optimizer"], epoch, callbacks)
             if self.ctx.is_dryrun():
                 break
         logger.info("Finished training for the experiment '%s' ", self.ctx["config"]["name"])
 
-    def __validate(self, current_epoch, callbacks, step: TrainingStep):
+    def __epoch_validate(self, current_epoch, callbacks, step: TrainingStep):
         self.ctx["model"].eval()
         with self.ctx["comet"].validate(), torch.no_grad():
             self.__perform_steps("validate", current_epoch, callbacks, step)
 
-    def __train(self, current_epoch, callbacks: CallbackRegistry, step: TrainingStep):
+    def __epoch_train(self, current_epoch, callbacks: CallbackRegistry, step: TrainingStep):
         self.ctx["model"].train()
         with self.ctx["comet"].train():
             self.__perform_steps("train", current_epoch, callbacks, step)
@@ -88,12 +99,13 @@ class Trainer(object):
 class Predictor(object):
 
     @classmethod
-    def from_config(cls, experiment_config, split_name):
+    def from_config(cls, experiment_config, split_name, model_path: str):
         """
             @param experiment_config: a dictionary with all meta-information to perform the training
             @param split_name: Name of the dataset split on which to perform the prediction.
+            @param model_path: a path to the model checkpoint e.g. /path/to/model/model.pth.tar
         """
-        context = contexts.PredictionContext.from_config(experiment_config, [split_name])
+        context = contexts.PredictionContext.from_config(experiment_config, [split_name], model_path)
         return cls(context, split_name)
 
     def __init__(self, context, split_name):
@@ -102,15 +114,23 @@ class Predictor(object):
 
     def perform(self, callbacks: CallbackRegistry = None, step: Step = None):
         logger.info("Perform prediction for the experiment '%s' on '%s'", self.ctx["config"]["name"], self.split_name)
+
         if callbacks is None:
-            logger.info("Using configured callbacks.")
             callbacks = self.ctx["callbacks"]
+
+        if len(callbacks) == 0:
+            logger.info("No callbacks registered!")
+        else:
+            logger.info("Using configured callbacks.")
             [logger.info("Detected callback: %s", clb) for clb in callbacks]
+
         if step is None:
             step = Step()
+
         if self.ctx.is_dryrun():
             logger.info("Detected dry run mode. Performing a single step only.")
-        """ Perform the test """
+
+        """ Perform the prediction """
         self.ctx["model"].eval()
         with self.ctx["comet"].test(), torch.no_grad():
             callbacks.on_epoch_start(phase="test", epoch=None)
@@ -149,9 +169,14 @@ class Processor(object):
 
     def perform(self, callbacks: CallbackRegistry = None):
         logger.info("Perform processing for the experiment '%s' on '%s'", self.ctx["config"]["name"], self.split_name)
+
         if callbacks is None:
-            logger.info("Using configured callbacks.")
             callbacks = self.ctx["callbacks"]
+
+        if len(callbacks) == 0:
+            logger.info("No callbacks registered!")
+        else:
+            logger.info("Using configured callbacks.")
             [logger.info("Detected callback: %s", clb) for clb in callbacks]
 
         epoch_start = 1
@@ -162,9 +187,6 @@ class Processor(object):
                 epoch_start = exp_params["epoch_start"]
             if "num_epochs" in exp_params:
                 total_epochs = exp_params["num_epochs"]
-
-        if len(callbacks) == 0:
-            logger.info("No callbacks or saver registered!")
 
         if self.ctx.is_dryrun():
             logger.info("Detected dry run mode. Performing a single episode step only.")
