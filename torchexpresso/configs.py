@@ -16,15 +16,27 @@ def merge_params(experiment_config: dict, params: dict, sub_config: str = None):
 
 def replace_placeholders(experiment_config: dict, placeholders: dict):
     for holder, value in placeholders.items():
-        replace_placeholder(holder, value, experiment_config)
+        replace_placeholder_in_dict(holder, value, experiment_config)
 
 
-def replace_placeholder(placeholder: str, value: str, parameters: dict):
+def replace_placeholder_in_dict(placeholder: str, value: str, parameters: dict):
     for name, parameter in parameters.items():
         if isinstance(parameter, dict):
-            replace_placeholder(placeholder, value, parameter)
+            replace_placeholder_in_dict(placeholder, value, parameter)
+        if isinstance(parameter, list):
+            replace_placeholder_in_list(placeholder, value, parameter)
         if isinstance(parameter, str):
             parameters[name] = parameter.replace("$" + placeholder, value)
+
+
+def replace_placeholder_in_list(placeholder: str, value: str, parameters: list):
+    for idx, parameter in enumerate(parameters):
+        if isinstance(parameter, dict):
+            replace_placeholder_in_dict(placeholder, value, parameter)
+        if isinstance(parameter, list):
+            replace_placeholder_in_list(placeholder, value, parameter)
+        if isinstance(parameter, str):
+            parameters[idx] = parameter.replace("$" + placeholder, value)
 
 
 class ExperimentConfigLoader:
@@ -33,9 +45,9 @@ class ExperimentConfigLoader:
         self.config_top_dir = config_top_dir
         self.ref_words = ref_words or ["model", "dataset", "task", "env", "callbacks", "savers"]
         """ Optionals """
-        self.experiment_params = None
-        self.dataset_params = None
-        self.placeholders = None
+        self.experiment_params = dict()
+        self.dataset_params = dict()
+        self.placeholders = dict()
 
     def with_experiment_params(self, **params):
         """ Dynamically inject the given params into the config["params"] on load.
@@ -90,10 +102,12 @@ class ExperimentConfigLoader:
             if cometml_config:
                 # We directly set the cometml params here
                 experiment_config["cometml"] = cometml_config
-            if self.experiment_params:
+            if len(self.experiment_params) > 0:
                 merge_params(experiment_config, self.experiment_params)
-            if self.dataset_params:
+            if len(self.dataset_params) > 0:
                 merge_params(experiment_config, self.dataset_params, "dataset")
+            # Add default placeholders
+            self.placeholders["experiment_name"] = experiment_config["name"]
             if self.placeholders:
                 replace_placeholders(experiment_config, self.placeholders)
 
