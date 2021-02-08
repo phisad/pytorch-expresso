@@ -10,31 +10,42 @@ class Metric(Callback):
     Base class for callbacks that collect metrics
     """
 
+    def __init__(self, name, on_phase: list):
+        super().__init__(name)
+        # As default, we apply metrics only during training
+        if on_phase is None:
+            on_phase = ["train", "validate"]
+        self.on_phase = on_phase
+        self.current_phase = None
+        self.value = 0
+        self.total = 0
+
+    def on_epoch_start(self, phase, epoch):
+        self.current_phase = phase
+        if not self.is_applicable():
+            return
+        self.value = 0
+        self.total = 0
+
+    def is_applicable(self):
+        return self.current_phase in self.on_phase
+
     @torch.no_grad()
     def to_value(self):
         pass
 
 
-class MetricsMetric(Metric):
+class AverageMetricsMetric(Metric):
     """
-        Marker class for a metric operating on other metrics, which should have been loaded and calculated before.
+    Register multiple metrics and average their values on_epoch_end.
+
+    The other metrics should have been loaded and calculated before.
     """
 
-
-class AverageMetricsMetric(MetricsMetric):
-    """
-    Register multiple metrics and average their values on_epoch_end
-    """
-
-    def __init__(self, experiment, name, metrics: list, on_phase=None):
-        super().__init__(name)
+    def __init__(self, experiment, name, metrics: list, on_phase: list = None):
+        super().__init__(name, on_phase)
         self.experiment = experiment
         self.metrics = metrics
-        self.on_phase = on_phase
-        self.current_phase = None
-
-    def on_epoch_start(self, phase, epoch):
-        self.current_phase = phase
 
     @torch.no_grad()
     def to_value(self):
@@ -43,9 +54,8 @@ class AverageMetricsMetric(MetricsMetric):
 
     @torch.no_grad()
     def on_epoch_end(self, epoch):
-        if self.on_phase:
-            if self.on_phase != self.current_phase:
-                return
+        if not self.is_applicable():
+            return
         self.experiment.log_metric(self.name, self.to_value(), step=epoch)
 
 
@@ -56,29 +66,17 @@ Common Metrics
 
 class AverageLossMetric(Metric):
 
-    def __init__(self, experiment, name="epoch_loss", on_phase=None, index=None, context=None):
-        super().__init__(name)
+    def __init__(self, experiment, name="epoch_loss",
+                 on_phase: list = None, index=None, context=None):
+        super().__init__(name, on_phase)
         self.experiment = experiment
         self.index = index
         self.context = context
-        self.value = 0
-        self.total = 0
-        self.on_phase = on_phase
-        self.current_phase = None
-
-    def on_epoch_start(self, phase, epoch):
-        self.current_phase = phase
-        if self.on_phase:
-            if self.on_phase != self.current_phase:
-                return
-        self.value = 0
-        self.total = 0
 
     @torch.no_grad()
     def on_step(self, inputs, outputs, labels, mask, loss, step):
-        if self.on_phase:
-            if self.on_phase != self.current_phase:
-                return
+        if not self.is_applicable():
+            return
         if self.index is None:
             self.value += loss.item()
         else:
@@ -90,9 +88,8 @@ class AverageLossMetric(Metric):
         return torch.true_divide(self.value, self.total)
 
     def on_epoch_end(self, epoch):
-        if self.on_phase:
-            if self.on_phase != self.current_phase:
-                return
+        if not self.is_applicable():
+            return
         if self.context:
             with self.experiment.context_manager(self.current_phase + "_" + self.context):
                 self.experiment.log_metric(self.name, self.to_value(), step=epoch)
@@ -107,29 +104,17 @@ class AverageClassActivation(Metric):
         We would expect that this approaches one using a softmax classifier, because then the loss is zero.
     """
 
-    def __init__(self, experiment, name="epoch_class_activation", on_phase=None, index=None, context=None):
-        super().__init__(name)
+    def __init__(self, experiment, name="epoch_class_activation",
+                 on_phase: list = None, index=None, context=None):
+        super().__init__(name, on_phase)
         self.experiment = experiment
         self.index = index
         self.context = context
-        self.value = 0
-        self.total = 0
-        self.on_phase = on_phase
-        self.current_phase = None
-
-    def on_epoch_start(self, phase, epoch):
-        self.current_phase = phase
-        if self.on_phase:
-            if self.on_phase != self.current_phase:
-                return
-        self.value = 0
-        self.total = 0
 
     @torch.no_grad()
     def on_step(self, inputs, outputs, labels, mask, loss, step):
-        if self.on_phase:
-            if self.on_phase != self.current_phase:
-                return
+        if not self.is_applicable():
+            return
         if self.index:
             outputs = outputs[self.index]
             labels = labels[self.index]
@@ -143,9 +128,8 @@ class AverageClassActivation(Metric):
         return torch.true_divide(self.value, self.total)
 
     def on_epoch_end(self, epoch):
-        if self.on_phase:
-            if self.on_phase != self.current_phase:
-                return
+        if not self.is_applicable():
+            return
         if self.context:
             with self.experiment.context_manager(self.current_phase + "_" + self.context):
                 self.experiment.log_metric(self.name, self.to_value(), step=epoch)
@@ -158,29 +142,17 @@ class BinaryAccuracyMetric(Metric):
         For binary output units this applies sigmoid on the logits and rounds towards zero or one.
     """
 
-    def __init__(self, experiment, name="epoch_binary_accuracy", on_phase=None, index=None, context=None):
-        super().__init__(name)
+    def __init__(self, experiment, name="epoch_binary_accuracy",
+                 on_phase: list = None, index=None, context=None):
+        super().__init__(name, on_phase)
         self.experiment = experiment
         self.index = index
         self.context = context
-        self.value = 0
-        self.total = 0
-        self.on_phase = on_phase
-        self.current_phase = None
-
-    def on_epoch_start(self, phase, epoch):
-        self.current_phase = phase
-        if self.on_phase:
-            if self.on_phase != self.current_phase:
-                return
-        self.value = 0
-        self.total = 0
 
     @torch.no_grad()
     def on_step(self, inputs, outputs, labels, mask, loss, step):
-        if self.on_phase:
-            if self.on_phase != self.current_phase:
-                return
+        if not self.is_applicable():
+            return
         if self.index is not None:
             # B x L
             outputs = outputs[:, self.index]
@@ -196,9 +168,8 @@ class BinaryAccuracyMetric(Metric):
         return torch.true_divide(self.value, self.total).item()
 
     def on_epoch_end(self, epoch):
-        if self.on_phase:
-            if self.on_phase != self.current_phase:
-                return
+        if not self.is_applicable():
+            return
         if self.context:
             with self.experiment.context_manager(self.context):
                 self.experiment.log_metric(self.name, self.to_value(), step=epoch)
@@ -208,29 +179,17 @@ class BinaryAccuracyMetric(Metric):
 
 class CategoricalAccuracyMetric(Metric):
 
-    def __init__(self, experiment, name="epoch_accuracy", on_phase=None, index=None, context=None):
-        super().__init__(name)
+    def __init__(self, experiment, name="epoch_accuracy",
+                 on_phase: list = None, index=None, context=None):
+        super().__init__(name, on_phase)
         self.experiment = experiment
         self.index = index
         self.context = context
-        self.value = 0
-        self.total = 0
-        self.on_phase = on_phase
-        self.current_phase = None
-
-    def on_epoch_start(self, phase, epoch):
-        self.current_phase = phase
-        if self.on_phase:
-            if self.on_phase != self.current_phase:
-                return
-        self.value = 0
-        self.total = 0
 
     @torch.no_grad()
     def on_step(self, inputs, outputs, labels, mask, loss, step):
-        if self.on_phase:
-            if self.on_phase != self.current_phase:
-                return
+        if not self.is_applicable():
+            return
         if self.index is not None:
             outputs = outputs[self.index]
             labels = labels[self.index]
@@ -244,9 +203,8 @@ class CategoricalAccuracyMetric(Metric):
         return torch.true_divide(self.value, self.total).item()
 
     def on_epoch_end(self, epoch):
-        if self.on_phase:
-            if self.on_phase != self.current_phase:
-                return
+        if not self.is_applicable():
+            return
         if self.context:
             with self.experiment.context_manager(self.context):
                 self.experiment.log_metric(self.name, self.to_value(), step=epoch)
@@ -254,22 +212,22 @@ class CategoricalAccuracyMetric(Metric):
             self.experiment.log_metric(self.name, self.to_value(), step=epoch)
 
 
-class CategoricalAccuracyMatrix(Callback):
+class CategoricalAccuracyMatrix(Metric):
 
     def __init__(self, experiment, class_names, name="epoch_accuracy_matrix", on_phase=None, index=None):
-        super().__init__(name)
+        super().__init__(name, on_phase)
         self.experiment = experiment
         self.num_classes = len(class_names)
         self.confusion_matrix = comet_ml.ConfusionMatrix(labels=class_names)
         self.index = index
-        self.on_phase = on_phase
-        self.current_phase = None
         self.labels = None
         self.predictions = None
 
     @torch.no_grad()
     def on_epoch_start(self, phase, epoch):
-        self.current_phase = phase
+        super().on_epoch_start(phase, epoch)
+        if not self.is_applicable():
+            return
         self.labels = None
         self.predictions = None
 
@@ -279,6 +237,8 @@ class CategoricalAccuracyMatrix(Callback):
         @param labels: the true labels for the samples.
         @param outputs: the raw output of the model. A winner function (np.argmax) is applied on compute_matrix()
         """
+        if not self.is_applicable():
+            return
         if self.index is not None:
             outputs = outputs[self.index]
         if self.predictions is not None:
@@ -293,6 +253,8 @@ class CategoricalAccuracyMatrix(Callback):
 
     @torch.no_grad()
     def on_epoch_end(self, epoch):
+        if not self.is_applicable():
+            return
         self.confusion_matrix.compute_matrix(self.labels.cpu().numpy(), self.predictions.numpy())
         if epoch:
             matrix_title = "Confusion Matrix, Epoch #%s" % epoch
