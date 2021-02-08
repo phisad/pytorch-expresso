@@ -39,7 +39,7 @@ class PlotInputImage(Callback):
         Plot N inputs (at index) of the last step in an episode.
     """
 
-    def __init__(self, experiment, image_shape, name="plt_img_inputs", num_images=3, index=None):
+    def __init__(self, experiment, image_shape=None, name="plt_img_inputs", num_images=3, index=None):
         super().__init__(name)
         self.experiment = experiment
         self.image_shape = image_shape
@@ -58,8 +58,9 @@ class PlotInputImage(Callback):
             inputs = inputs[self.index]
             labels = labels[self.index]
         # Inputs are after model.prepare(), so we reshape if necessary
-        batch_size = inputs.size()[0]
-        inputs = torch.reshape(inputs, [batch_size] + self.image_shape)
+        if self.image_shape:
+            batch_size = inputs.size()[0]
+            inputs = torch.reshape(inputs, [batch_size] + self.image_shape)
         self.last_inputs = inputs
         self.last_labels = labels
 

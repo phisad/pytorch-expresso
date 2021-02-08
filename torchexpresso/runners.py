@@ -11,7 +11,7 @@ logger = logging.getLogger(__file__)
 class Trainer(object):
 
     @classmethod
-    def from_config(cls, experiment_config: dict, train_split: str, dev_split: str):
+    def from_config(cls, experiment_config: dict, train_split: str = "train", dev_split: str = "dev"):
         """
             @param experiment_config: a dictionary with all meta-information to perform the training
             @param train_split: Name of the dataset split on which to perform the training.
