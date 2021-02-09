@@ -132,17 +132,22 @@ def load_image_from_dir(image_directory, image_file_name, image_transforms=None)
         return image
 
 
-def image_to_numpy(image: torch.Tensor, normalize: tuple = None):
+def image_to_numpy(image: torch.Tensor, normalize: tuple = None, height_first=True):
     """
     Convert a pytorch (image) tensor to numpy e.g. for plotting. The tensor will detached and copied to cpu.
 
-    :param image: a pytorch tensor (C,W,H)
+    :param image: a pytorch tensor (C,H,W)
     :param normalize: a tuple (std,mean) to denormalize
-    :return: a numpy array (W,H,C) with values in [0,255]
+    :param height_first: if true then returns (H,W,C) else (W,H,C)
+    :return: a numpy array with values in [0,255]
     """
     image = image.detach().cpu().numpy()
     if normalize:
         image = image * normalize[0] + normalize[1]
     image = (image * 255).astype(np.uint8)
-    image = image.transpose((1, 2, 0))
+    # Note: The pyglet viewer return (H, W, C), but the actual engine is operating on (W, H, C)
+    if height_first:
+        image = image.transpose((1, 2, 0))
+    else:
+        image = image.transpose((2, 1, 0))
     return image
