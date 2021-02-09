@@ -35,3 +35,27 @@ class RunningLogger(Callback):
         time_running = datetime.now() - self.time_last_log
         time_running_seconds = time_running.seconds
         return time_running_seconds > self.log_period_in_seconds
+
+
+class StepLogger(Callback):
+
+    def __init__(self, name="step_logger", period_in_steps: int = 1):
+        super().__init__(name)
+        self.period_in_steps = period_in_steps
+        self.current_phase = None
+        self.current_epoch = None
+        self.time_last_log = None
+
+    def on_epoch_start(self, phase, epoch):
+        self.current_phase = phase
+        self.current_epoch = epoch
+
+    def on_step(self, inputs, outputs, labels, mask, loss, step):
+        if self.period_in_steps == 1 or step % self.period_in_steps == 0:
+            # TODO: Maybe use "even nicer" python format with padding
+            logger.info("Running \t [phase: %s] \t [epoch: %s] \t [step: %s]",
+                        self.current_phase, self.current_epoch, step)
+            self.time_last_log = datetime.now()
+
+    def on_epoch_end(self, epoch):
+        pass
