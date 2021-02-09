@@ -5,6 +5,9 @@ Created on 21.01.2021
 """
 import json
 import os
+import logging
+
+logger = logging.getLogger(__file__)
 
 
 def merge_params(experiment_config: dict, params: dict, sub_config: str = None):
@@ -76,6 +79,11 @@ class ExperimentConfigLoader:
         return self
 
     def load(self, experiment_name, comet_user=None):
+        """
+
+        :param experiment_name: the name of the experiment (file) to load. Might include a subpath e.g. 'exp-group1/exp1'
+        :return:
+        """
         experiment_config = self.__load_config(experiment_name)
         cometml_config = self.__load_comet_config(comet_user)
         self.__inject_and_replace(experiment_config, cometml_config)
@@ -83,6 +91,10 @@ class ExperimentConfigLoader:
 
     def __load_config(self, experiment_name):
         experiments_dir = os.path.join(self.config_top_dir, "experiments")
+        experiment_subdir, experiment_name = os.path.split(experiment_name)
+        if experiment_subdir:
+            logger.info("Experiment sub-directory: %s", experiment_subdir)
+            experiments_dir = os.path.join(experiments_dir, experiment_subdir)
         experiment_configs = [file for file in os.listdir(experiments_dir) if file.endswith(".json")]
         json_name = experiment_name + ".json"
         if json_name not in experiment_configs:
@@ -90,7 +102,10 @@ class ExperimentConfigLoader:
             err_msg = "ExperimentConfigurations %s was not found. " \
                       "Available experiment configurations:\n%s" % (json_name, available_configs)
             raise FileNotFoundError(err_msg)
-        relative_experiment_config_path = os.path.join("experiments", json_name)
+        if experiment_subdir:
+            relative_experiment_config_path = os.path.join("experiments", experiment_subdir, json_name)
+        else:
+            relative_experiment_config_path = os.path.join("experiments", json_name)
         experiment_config = self.__load_json_config_as_dict(self.config_top_dir, relative_experiment_config_path)
         experiment_config["name"] = experiment_name
         return experiment_config

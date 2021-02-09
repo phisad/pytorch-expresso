@@ -8,7 +8,7 @@ def perform_training():
     config = ExperimentConfigLoader("configs") \
         .with_experiment_params(dry_run=True) \
         .with_placeholders(checkpoint_dir=os.getenv("CHECKPOINT_DIR")) \
-        .load("classify-digits", comet_user=os.getenv("COMET_USER"))
+        .load("classify/classify-digits", comet_user=os.getenv("COMET_USER"))
     Trainer.from_config(config, "train", "dev").perform()
 
 
