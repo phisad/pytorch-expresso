@@ -151,3 +151,31 @@ def image_to_numpy(image: torch.Tensor, normalize: tuple = None, height_first=Tr
     else:
         image = image.transpose((2, 1, 0))
     return image
+
+
+def image_to_patches_2d(image: torch.Tensor, num_patches: int):
+    """
+    Returns N*N patches from the input image.
+
+    Note: Only tested when num_patches is a whole divisor of H or W
+    e.g. for an image of 100 x 100 pixels returns 5 * 5 patches of size 20 x 20, when num_patches = 5.
+
+    :param image: with dimensions (C, H, W)
+    :param num_patches: number of patches N (possibly a multiple of H and W)
+    :return: the patches in dimension (N*N) x C x H x W
+    """
+    image_channels = image.size()[0]
+    image_height = image.size()[1]
+    patch_size = image_height // num_patches
+    patches = image
+    for channel in range(1, image_channels + 1):
+        patches = patches.unfold(channel, patch_size, patch_size)
+    # Unfold returns a "changed" view/indexing on the "unchanged" data,
+    # thus we call contiguous() to re-sync the indexing with the view
+    # C x N x N x 1 x W x H -> C x (N*N) x W x H
+    patches = patches.contiguous().view(image_channels, -1, patch_size, patch_size)
+    # Permute shifts the actual data, returning a contiguous() view
+    # We use (N*N) as batch dimension; reset height as first dim
+    # C x (N*N) x W x H -> (N*N) x C x H x W
+    patches = patches.permute(dims=(1, 0, 3, 2))
+    return patches
