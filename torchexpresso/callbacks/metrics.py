@@ -259,13 +259,13 @@ class CategoricalAccuracyMatrix(IndexMetric):
         self.num_classes = len(class_names)
         self.confusion_matrix = comet_ml.ConfusionMatrix(labels=class_names)
         self.labels = None
-        self.predictions = None
-        self.set_index_sensitivity(["outputs"])
+        self.outputs = None
+        self.set_index_sensitivity(["outputs", "labels"])
 
     @torch.no_grad()
     def _guarded_on_epoch_start(self, phase, epoch):
         self.labels = None
-        self.predictions = None
+        self.outputs = None
 
     @torch.no_grad()
     def _index_guarded_on_step(self, inputs, outputs, labels, mask, loss, step):
@@ -273,10 +273,10 @@ class CategoricalAccuracyMatrix(IndexMetric):
         @param labels: the true labels for the samples.
         @param outputs: the raw output of the model. A winner function (np.argmax) is applied on compute_matrix()
         """
-        if self.predictions is not None:
-            self.predictions = torch.cat((self.predictions, outputs.detach().clone().cpu()))
+        if self.outputs is not None:
+            self.outputs = torch.cat((self.outputs, outputs.detach().clone().cpu()))
         else:
-            self.predictions = outputs.detach().clone().cpu()
+            self.outputs = outputs.detach().clone().cpu()
         if self.labels is not None:
             self.labels = torch.cat(
                 (self.labels, torch.stack([functional.one_hot(v, self.num_classes) for v in labels])))
@@ -285,7 +285,7 @@ class CategoricalAccuracyMatrix(IndexMetric):
 
     @torch.no_grad()
     def _guarded_on_epoch_end(self, epoch):
-        self.confusion_matrix.compute_matrix(self.labels.cpu().numpy(), self.predictions.numpy())
+        self.confusion_matrix.compute_matrix(self.labels.cpu().numpy(), self.outputs.numpy())
         if epoch:
             matrix_title = "%s, Epoch #%s" % (self.name, epoch)
             matrix_file = "%s-%s-%03d.json" % (self.current_phase, self.name, epoch)
