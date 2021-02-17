@@ -39,7 +39,7 @@ class ModelGradientMetric(Metric):
 
     @torch.no_grad()
     def _guarded_on_step(self, inputs, outputs, labels, mask, loss, step):
-        step_grads = [param[1].grad.abs() for param in self.model_parameters]
+        step_grads = [param[1].grad.abs().sum() for param in self.model_parameters]
         step_grads = torch.stack(step_grads).sum().cpu()
         step_grads = step_grads.item()
         self.value += step_grads
