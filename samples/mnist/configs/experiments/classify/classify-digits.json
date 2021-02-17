@@ -1,5 +1,9 @@
 {
-  "params": {"batch_size": 32, "num_epochs": 10},
+  "params": {
+    "batch_size": 32,
+    "num_epochs": 10,
+    "optim_fn": {"package": "torch.optim", "class": "Adam", "kwargs": {"weight_decay": 5e-4}}
+  },
   "model": {"package": "samples.mnist.models", "class": "FNNClassifier"},
   "dataset": {"package": "samples.mnist.providers", "class": "MnistDataset"},
   "task": {

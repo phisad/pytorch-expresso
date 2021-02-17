@@ -35,9 +35,8 @@ The configuration structure is straight-forward:
 the -u myuser option. All added user files are git-ignored. Simply copy and rename the sample.json to myuser.json and
 provide the api-key, workspace and project name.
 
-**dataset**: Defines the dataset provider to use and the split structure and the vocabulary file. These configs assume
-that the dataset top directory is given with the -d /data/blockworld option. The dataset provider is dynamically loaded
-during the experiment using the configured package and class name.
+**dataset**: Defines the dataset provider to use and the split structure and the vocabulary file. The dataset provider
+is dynamically loaded during the experiment using the configured package and class name.
 
 **models**: Define available models and their hyper-parameters for the experiments. The model is dynamically loaded
 during the experiment using the configured package and class name. Models link the network architecture to according
@@ -50,13 +49,16 @@ slightly different while sharing most of the code along experiments. For example
 same while the classifcation task changes (source block vs directions).
 
 **experiments**: Combines *dataset, models and tasks* and allows to introduce further *params* to the training
-procedure (gpu, epochs, batch size). The previous mentioned can be directly included in the experiment config for better
-readability. Still, when certain modules are repeatitly used, then they can also be put into an own file. For example a
-certain task that is the same for all experiments. The modules are then referenced by their file names.
+procedure (gpu, epochs, batch size). The experiment params might also include certain references to specific classes
+for ["step_fn","loss_fn","optim_fn"] all coming with potential *kwargs* to be injected.
+
+The previous mentioned can all be directly included in the experiment config for better readability. Still, when certain
+modules are repeatitly used, then they can also be put into an own file. For example a certain task that is the same for
+all experiments. The modules are then referenced by their file names.
 
 These file references are dynamically loaded during the experiment assuming the config top dir is given in the
-ConfigurationLoader. The values for ["model", "dataset", "task", "steps"] which end with json are interpreted as
-seperate files and loaded as dict-like objects. This works recusively which allows experiment series.
+ConfigurationLoader. The values for ["model", "dataset", "task", "env", "callbacks", "savers"] which end with json are
+interpreted as seperate files and loaded as dict-like or list objects.
 
 Experiment configurations allow for example to run:
 

@@ -35,6 +35,36 @@ def is_dryrun(exp_params):
 class ContextLoader:
 
     @staticmethod
+    def load_module_from_config(module_config):
+        if "kwargs" in module_config:
+            return ContextLoader.load_module_dynamically(module_config["package"], module_config["class"],
+                                                         module_config["kwargs"])
+        return ContextLoader.load_module_dynamically(module_config["package"], module_config["class"])
+
+    @staticmethod
+    def load_module_dynamically(python_package, python_class, cls_kwargs=None):
+        cls_package = __import__(python_package, fromlist=python_class)
+        cls = getattr(cls_package, python_class)
+        if cls_kwargs is None:
+            return cls()
+        return cls(**cls_kwargs)
+
+    @staticmethod
+    def load_optimizer_from_config(module_config, model):
+        if "kwargs" in module_config:
+            return ContextLoader.load_optimizer_dynamically(module_config["package"], module_config["class"], model,
+                                                            module_config["kwargs"])
+        return ContextLoader.load_optimizer_dynamically(module_config["package"], module_config["class"], model)
+
+    @staticmethod
+    def load_optimizer_dynamically(python_package, python_class, model, cls_kwargs=None):
+        cls_package = __import__(python_package, fromlist=python_class)
+        cls = getattr(cls_package, python_class)
+        if cls_kwargs is None:
+            return cls(model.parameters())
+        return cls(model.parameters(), **cls_kwargs)
+
+    @staticmethod
     def load_device_from_config(experiment_config):
         cpu_only = False
         if PARAM_CPU_ONLY in experiment_config["params"]:
@@ -48,36 +78,6 @@ class ContextLoader:
         else:
             device_name = "cuda:0" if cuda.is_available() else "cpu"
         return torch.device(device_name)
-
-    @staticmethod
-    def load_step_fn(step_config):
-        if "kwargs" in step_config:
-            return ContextLoader.load_step_config_dynamically(step_config["package"], step_config["class"],
-                                                              step_config["kwargs"])
-        return ContextLoader.load_step_config_dynamically(step_config["package"], step_config["class"])
-
-    @staticmethod
-    def load_step_config_dynamically(python_package, python_class, step_kwargs=None):
-        step_package = __import__(python_package, fromlist=python_class)
-        step_class = getattr(step_package, python_class)
-        if step_kwargs is None:
-            return step_class()
-        return step_class(**step_kwargs)
-
-    @staticmethod
-    def load_loss_fn(loss_config):
-        if "kwargs" in loss_config:
-            return ContextLoader.load_loss_fn_dynamically(loss_config["package"], loss_config["class"],
-                                                          loss_config["kwargs"])
-        return ContextLoader.load_loss_fn_dynamically(loss_config["package"], loss_config["class"])
-
-    @staticmethod
-    def load_loss_fn_dynamically(python_package, python_class, loss_kwargs=None):
-        loss_package = __import__(python_package, fromlist=python_class)
-        loss_class = getattr(loss_package, python_class)
-        if loss_kwargs is None:
-            return loss_class()
-        return loss_class(**loss_kwargs)
 
     @staticmethod
     def load_callbacks_from_config(exp_config, comet):
@@ -348,7 +348,11 @@ class TrainingContext:
         model.to(experiment_context["device"])
 
         # Load optimizer only now to guarantee that the parameters are on the same device
-        optimizer = torch.optim.Adam(model.parameters())
+        if "optim_fn" in experiment_config["params"]:
+            optimizer = ContextLoader.load_optimizer_from_config(experiment_config["params"]["optim_fn"], model)
+        else:
+            optimizer = torch.optim.Adam(model.parameters())
+
         if is_resume:
             optimizer.load_state_dict(ckpt["optimizer"])
 
@@ -357,14 +361,14 @@ class TrainingContext:
 
         """ Load and setup the loss function """
         if "loss_fn" in experiment_config["params"]:
-            loss_fn = ContextLoader.load_loss_fn(experiment_config["params"]["loss_fn"])
+            loss_fn = ContextLoader.load_module_from_config(experiment_config["params"]["loss_fn"])
         else:
             # Mask padding_value=0 for loss computation
             loss_fn = torch.nn.CrossEntropyLoss(ignore_index=0)
 
         """ Load and setup the step function """
         if "step_fn" in experiment_config["params"]:
-            step_fn = ContextLoader.load_step_fn(experiment_config["params"]["step_fn"])
+            step_fn = ContextLoader.load_module_from_config(experiment_config["params"]["step_fn"])
         else:
             step_fn = steps.TrainingStep()
 
