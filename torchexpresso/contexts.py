@@ -400,7 +400,7 @@ class TrainingContext:
 class PredictionContext:
 
     @classmethod
-    def from_config(cls, experiment_config: dict, split_names: list, model_path: str):
+    def from_config(cls, experiment_config: dict, split_names: list, model_path: str = None):
         """ Create a prediction context from the config"""
         if model_path is None:
             raise Exception("Missing 'model_path' argument. Please provide a path to the model.")
@@ -408,13 +408,18 @@ class PredictionContext:
         """ Load experiment context """
         partial_context = ExperimentContext.from_config(experiment_config, split_names)
 
-        """ Load the checkpoint """
-        ckpt = load_checkpoint_from_path(model_path)
-        log_checkpoint(partial_context["comet"], ckpt)
+        if model_path:
+            logger.info("Detected 'model_path' to '%s'" % model_path)
+            """ Load the checkpoint """
+            ckpt = load_checkpoint_from_path(model_path)
+            log_checkpoint(partial_context["comet"], ckpt)
 
-        """ Load and setup the model from ckpt"""
-        model = ContextLoader.load_model_from_config(ckpt["cp-model"], ckpt["cp-task"])
-        model.load_state_dict(ckpt['state_dict'], strict=False)
+            """ Load and setup the model from ckpt"""
+            model = ContextLoader.load_model_from_config(ckpt["cp-model"], ckpt["cp-task"])
+            model.load_state_dict(ckpt['state_dict'], strict=False)
+        else:
+            logger.warning("No 'model_path' detected. Load model from config. Make sure to initialize the model!")
+            model = ContextLoader.load_model_from_config(experiment_config["model"], experiment_config["task"])
         model.to(partial_context["device"])
         partial_context["model"] = model
 

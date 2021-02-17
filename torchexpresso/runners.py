@@ -99,7 +99,7 @@ class Trainer(object):
 class Predictor(object):
 
     @classmethod
-    def from_config(cls, experiment_config, split_name, model_path: str):
+    def from_config(cls, experiment_config, split_name, model_path: str = None):
         """
             @param experiment_config: a dictionary with all meta-information to perform the training
             @param split_name: Name of the dataset split on which to perform the prediction.
