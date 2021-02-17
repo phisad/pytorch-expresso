@@ -39,6 +39,10 @@ class TrainingStep(Step):
 
 
 class SequenceLossTrainingStep(TrainingStep):
+    """
+        Notice: If there are pad tokens with id=0, then this training step should be used with
+        torch.nn.CrossEntropyLoss(ignore_index=0) to ignore these pad tokens on loss computation.
+    """
 
     def forward(self, model, batch_inputs, device, step: int = None):  # noqa
         batch_outputs = model(batch_inputs, device)

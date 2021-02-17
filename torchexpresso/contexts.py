@@ -268,11 +268,15 @@ def log_config(comet, experiment_config):
     if "params" in experiment_config:
         comet.log_parameters(apply_prefix(experiment_config["params"], "exp"))
     if "model" in experiment_config:
-        if "params" in experiment_config["model"]:
-            comet.log_parameters(apply_prefix(experiment_config["model"]["params"], "model"))
+        model_config = experiment_config["model"]
+        comet.log_parameter("model-class", "%s.%s" % (model_config["package"], model_config["class"]))
+        if "params" in model_config:
+            comet.log_parameters(apply_prefix(model_config["params"], "model"))
     if "dataset" in experiment_config:
-        if "params" in experiment_config["dataset"]:
-            comet.log_parameters(apply_prefix(experiment_config["dataset"]["params"], "ds"))
+        dataset_config = experiment_config["dataset"]
+        comet.log_parameter("ds-class", "%s.%s" % (dataset_config["package"], dataset_config["class"]))
+        if "params" in dataset_config:
+            comet.log_parameters(apply_prefix(dataset_config["params"], "ds"))
     if "task" in experiment_config:
         comet.log_parameters(apply_prefix(experiment_config["task"], "task"))
 
@@ -366,8 +370,7 @@ class TrainingContext:
         if "loss_fn" in experiment_config["params"]:
             loss_fn = ContextLoader.load_module_from_config(experiment_config["params"]["loss_fn"])
         else:
-            # Mask padding_value=0 for loss computation
-            loss_fn = torch.nn.CrossEntropyLoss(ignore_index=0)
+            loss_fn = torch.nn.CrossEntropyLoss()
         partial_context["loss_fn"] = loss_fn
 
         """ Load and setup the step function """
