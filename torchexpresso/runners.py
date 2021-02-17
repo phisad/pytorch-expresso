@@ -25,7 +25,12 @@ class Trainer(object):
         self.train_split = train_split
         self.dev_split = dev_split
 
-    def perform(self, callbacks: CallbackRegistry = None, saver: Saver = None, step: TrainingStep = None):
+    def perform(self, callbacks: CallbackRegistry = None, saver: Saver = None, step: TrainingStep = None,
+                validate_mode: bool = False):
+        """
+        :param validate_mode: if True, then only validate phase is performed.
+            Might be useful to compute losses without actually training the model.
+        """
         logger.info("Perform training for the experiment '%s' ", self.ctx["config"]["name"])
 
         if callbacks is None:
@@ -53,10 +58,14 @@ class Trainer(object):
         if self.ctx.is_dryrun():
             logger.info("Detected dry run mode. Performing a single episode step only.")
 
+        if validate_mode:
+            logger.info("Detected validate mode. Performing a 'validate' phase only.")
+
         """ Perform the training and validation """
         total_epochs = self.ctx["config"]["params"]["num_epochs"]
         for epoch in range(epoch_start, total_epochs + 1):
-            self.__epoch_train(epoch, callbacks, step)
+            if not validate_mode:
+                self.__epoch_train(epoch, callbacks, step)
             self.__epoch_validate(epoch, callbacks, step)
             saver.on_epoch_end(self.ctx["model"], self.ctx["optimizer"], epoch, callbacks)
             if self.ctx.is_dryrun():
