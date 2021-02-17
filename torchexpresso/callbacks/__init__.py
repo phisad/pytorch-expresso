@@ -8,18 +8,45 @@ class Callback(object):
     Base class for callbacks.
     """
 
-    def __init__(self, name):
+    def __init__(self, name: str, on_phase=None):
+        # As default, we apply callbacks only during training
+        if on_phase is None:
+            on_phase = ["train", "validate"]
         self.name = name
+        self.on_phase = on_phase
+        self.current_phase = None
+
+    def is_applicable(self):
+        return self.current_phase in self.on_phase
 
     def on_epoch_start(self, phase, epoch):
-        pass
+        self.current_phase = phase
+        if not self.is_applicable():
+            return
+        self._guarded_on_epoch_start(phase, epoch)
 
     @torch.no_grad()
     def on_step(self, inputs, outputs, labels, mask, loss, step):
-        pass
+        if not self.is_applicable():
+            return
+        self._guarded_on_step(inputs, outputs, labels, mask, loss, step)
 
     @torch.no_grad()
     def on_epoch_end(self, epoch):
+        if not self.is_applicable():
+            return
+        self._guarded_on_epoch_end(epoch)
+
+    def _guarded_on_epoch_start(self, phase, epoch):
+        """ Phase-guarded invocation"""
+        pass
+
+    def _guarded_on_step(self, inputs, outputs, labels, mask, loss, step):
+        """ Phase-guarded invocation"""
+        pass
+
+    def _guarded_on_epoch_end(self, epoch):
+        """ Phase-guarded invocation"""
         pass
 
 
@@ -28,8 +55,8 @@ class CallbackRegistry(Callback):
         Register one or more callbacks for callback method invocation. Keeps the order of added callbacks.
     """
 
-    def __init__(self, name="registry"):
-        super().__init__(name)
+    def __init__(self, name="registry", on_phase: list = None):
+        super().__init__(name, on_phase)
         self.callbacks = OrderedDict()
 
     def on_epoch_start(self, phase, epoch):
@@ -59,6 +86,6 @@ class CallbackRegistry(Callback):
 
     def __iter__(self):
         return self.callbacks.__iter__()
-    
+
     def __len__(self):
         return len(self.callbacks)

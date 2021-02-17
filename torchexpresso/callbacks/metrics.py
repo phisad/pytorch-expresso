@@ -10,50 +10,14 @@ class Metric(Callback):
     Base class for callbacks that collect metrics
     """
 
-    def __init__(self, name, on_phase: list):
-        super().__init__(name)
-        # As default, we apply metrics only during training
-        if on_phase is None:
-            on_phase = ["train", "validate"]
-        self.on_phase = on_phase
-        self.current_phase = None
+    def __init__(self, name, on_phase: list = None):
+        super().__init__(name, on_phase)
         self.value = 0
         self.total = 0
-
-    def is_applicable(self):
-        return self.current_phase in self.on_phase
-
-    def on_epoch_start(self, phase, epoch):
-        self.current_phase = phase
-        if not self.is_applicable():
-            return
-        self.value = 0
-        self.total = 0
-        self._guarded_on_epoch_start(phase, epoch)
-
-    @torch.no_grad()
-    def on_step(self, inputs, outputs, labels, mask, loss, step):
-        if not self.is_applicable():
-            return
-        self._guarded_on_step(inputs, outputs, labels, mask, loss, step)
-
-    @torch.no_grad()
-    def on_epoch_end(self, epoch):
-        if not self.is_applicable():
-            return
-        self._guarded_on_epoch_end(epoch)
 
     def _guarded_on_epoch_start(self, phase, epoch):
-        """ Phase-guarded invocation"""
-        pass
-
-    def _guarded_on_step(self, inputs, outputs, labels, mask, loss, step):
-        """ Phase-guarded invocation"""
-        pass
-
-    def _guarded_on_epoch_end(self, epoch):
-        """ Phase-guarded invocation"""
-        pass
+        self.value = 0
+        self.total = 0
 
     @torch.no_grad()
     def to_value(self):
