@@ -13,10 +13,56 @@ implemented as an attachable callback. The users of this framework are also supp
 when not configuration is used.
 
 # The main flow
-    
+
     +--------+      +--------------+
     | Steps  | <->  |  Callbacks   |
     +--------+      +--------------+
+
+# Experiment configuration
+
+This project uses a highly customizable configuration framework.
+
+The configuration structure is straight-forward:
+
+    configs
+        +-- cometml
+        +-- datasets
+        +-- models
+        +-- tasks
+        +-- experiments
+
+**cometml**: Define a comet-ml user to run experiments. Follow the sample.json. Then you can run the experiments using
+the -u myuser option. All added user files are git-ignored. Simply copy and rename the sample.json to myuser.json and
+provide the api-key, workspace and project name.
+
+**dataset**: Defines the dataset provider to use and the split structure and the vocabulary file. These configs assume
+that the dataset top directory is given with the -d /data/blockworld option. The dataset provider is dynamically loaded
+during the experiment using the configured package and class name.
+
+**models**: Define available models and their hyper-parameters for the experiments. The model is dynamically loaded
+during the experiment using the configured package and class name. Models link the network architecture to according
+hyper-parameters. Thus an architecture with different hyper-parameters requires an additional file. This automatically
+documents the training procedure (but might be problematic for automatic hyper-parameter search).
+
+**tasks**: Define task specific parameters that are necessary for both models and dataset providers. The task parameters
+are injected in the configured dataset and model e.g. vocabulary size. Tasks allow models and providers to behave
+slightly different while sharing most of the code along experiments. For example, a model architecture might stay the
+same while the classifcation task changes (source block vs directions).
+
+**experiments**: Combines *dataset, models and tasks* and allows to introduce further *params* to the training
+procedure (gpu, epochs, batch size). The previous mentioned can be directly included in the experiment config for better
+readability. Still, when certain modules are repeatitly used, then they can also be put into an own file. For example a
+certain task that is the same for all experiments. The modules are then referenced by their file names.
+
+These file references are dynamically loaded during the experiment assuming the config top dir is given in the
+ConfigurationLoader. The values for ["model", "dataset", "task", "steps"] which end with json are interpreted as
+seperate files and loaded as dict-like objects. This works recusively which allows experiment series.
+
+Experiment configurations allow for example to run:
+
+- different models on the same task and dataset (fnn vs rnn)
+- different tasks using the same model on the same datasets (source vs target loation)
+- different datasets using the same model and (possibly different) task (semantics vs locations)
 
 # Install
 
