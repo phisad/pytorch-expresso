@@ -80,7 +80,7 @@ class ContextLoader:
         return torch.device(device_name)
 
     @staticmethod
-    def load_callbacks_from_config(exp_config, comet):
+    def load_callbacks_from_config(exp_config, partial_context):
         callbacks = CallbackRegistry()
         # Note: The ordering actually matters!
         if "callbacks" in exp_config:
@@ -94,37 +94,36 @@ class ContextLoader:
                         ref_metrics = [callbacks[ref] for ref in clb_kwargs["metrics"]]
                         # We replace the strings with the instances (now it is loadable dynamically)
                         clb_kwargs["metrics"] = ref_metrics
-                clb = ContextLoader.load_callback(clb_config, comet)
+                clb = ContextLoader.load_callback(clb_config, partial_context)
                 callbacks[clb.name] = clb  # Every callback needs a name
         else:
             # TODO do we want to set default callbacks?
-            loss_default = AverageLossMetric(comet)
+            loss_default = AverageLossMetric(partial_context["comet"])
             callbacks[loss_default.name] = loss_default
         return callbacks
 
     @staticmethod
-    def load_callback(clb_config, comet):
+    def load_callback(clb_config, partial_context):
         if "kwargs" in clb_config:
-            return ContextLoader.load_callback_dynamically(clb_config["package"], clb_config["class"], comet,
+            return ContextLoader.load_callback_dynamically(clb_config["package"], clb_config["class"], partial_context,
                                                            clb_config["kwargs"])
-        return ContextLoader.load_callback_dynamically(clb_config["package"], clb_config["class"], comet)
+        return ContextLoader.load_callback_dynamically(clb_config["package"], clb_config["class"], partial_context)
 
     @staticmethod
-    def load_callback_dynamically(python_package, python_class, comet, clb_kwargs=None):
+    def load_callback_dynamically(python_package, python_class, partial_context, clb_kwargs=None):
         clb_package = __import__(python_package, fromlist=python_class)
         clb_class = getattr(clb_package, python_class)
-        inject_comet = False
+
+        if clb_kwargs is None:
+            clb_kwargs = dict()
+
         sig = signature(clb_class)
         for p in sig.parameters.values():
             if p.name in ["comet", "experiment"]:
-                inject_comet = True
-                break
-        if clb_kwargs is None:
-            if inject_comet:
-                return clb_class(comet)
-            return clb_class()
-        if inject_comet:
-            return clb_class(comet, **clb_kwargs)
+                clb_kwargs[p.name] = partial_context["comet"]
+            if p.name in ["model"]:
+                clb_kwargs[p.name] = partial_context["model"]
+
         return clb_class(**clb_kwargs)
 
     @staticmethod
@@ -290,34 +289,34 @@ class ExperimentContext:
     @classmethod
     def from_config(cls, experiment_config, split_names: list):
         """ Create a experiment context from the config"""
+        partial_context = dict()
+        partial_context["config"] = experiment_config
 
         """ Load and setup the cometml experiment """
         comet = ContextLoader.load_cometml_experiment(experiment_config["cometml"], experiment_config["name"])
         if "tags" in experiment_config:
             comet.add_tags(experiment_config["tags"])
         log_config(comet, experiment_config)
-
-        """ Load the callbacks """
-        callbacks = ContextLoader.load_callbacks_from_config(experiment_config, comet)
+        partial_context["comet"] = comet
 
         """ Load and setup the device """
         device = ContextLoader.load_device_from_config(experiment_config)
+        partial_context["device"] = device
 
         """ Load the data providers """
         providers = ContextLoader.load_providers_from_config(experiment_config, split_names, device)
+        partial_context["providers"] = providers
 
-        return cls(experiment_config, comet, device, providers, callbacks)
+        return cls(partial_context)
 
-    def __init__(self, config, comet, device, providers, callbacks):
-        self.holder = dict()
-        self.holder["config"] = config
-        self.holder["comet"] = comet
-        self.holder["device"] = device
-        self.holder["providers"] = providers
-        self.holder["callbacks"] = callbacks
+    def __init__(self, experiment_context):
+        self.holder = experiment_context
 
     def __getitem__(self, item):
         return self.holder[item]
+
+    def __setitem__(self, key, value):
+        self.holder[key] = value
 
 
 class TrainingContext:
@@ -327,7 +326,7 @@ class TrainingContext:
         """ Create a training context from the config"""
 
         """ Load experiment context """
-        experiment_context = ExperimentContext.from_config(experiment_config, split_names)
+        partial_context = ExperimentContext.from_config(experiment_config, split_names)
 
         """ Load and setup model """
         epoch_start = 1
@@ -338,14 +337,16 @@ class TrainingContext:
         if is_resume:
             """ Load the checkpoint """
             ckpt = load_checkpoint_from_path(experiment_config["params"]["resume_checkpoint_path"])
-            log_checkpoint(experiment_context["comet"], ckpt)
+            log_checkpoint(partial_context["comet"], ckpt)
 
             # Note: In constrast to predict, we use the exp-model and exp-task
             model.load_state_dict(ckpt['state_dict'], strict=False)
 
             epoch_start = ckpt["cp-epoch"] + 1
             print("Resume training from epoch: {:d}".format(epoch_start))
-        model.to(experiment_context["device"])
+        model.to(partial_context["device"])
+        partial_context["epoch_start"] = epoch_start
+        partial_context["model"] = model
 
         # Load optimizer only now to guarantee that the parameters are on the same device
         if "optim_fn" in experiment_config["params"]:
@@ -355,9 +356,11 @@ class TrainingContext:
 
         if is_resume:
             optimizer.load_state_dict(ckpt["optimizer"])
+        partial_context["optimizer"] = optimizer
 
         """ Load the savers """
         savers = ContextLoader.load_savers_from_config(experiment_config)
+        partial_context["savers"] = savers
 
         """ Load and setup the loss function """
         if "loss_fn" in experiment_config["params"]:
@@ -365,23 +368,23 @@ class TrainingContext:
         else:
             # Mask padding_value=0 for loss computation
             loss_fn = torch.nn.CrossEntropyLoss(ignore_index=0)
+        partial_context["loss_fn"] = loss_fn
 
         """ Load and setup the step function """
         if "step_fn" in experiment_config["params"]:
             step_fn = ContextLoader.load_module_from_config(experiment_config["params"]["step_fn"])
         else:
             step_fn = steps.TrainingStep()
+        partial_context["step_fn"] = step_fn
 
-        return cls(experiment_context, model, optimizer, loss_fn, step_fn, epoch_start, savers)
+        """ Load the callbacks (only after the model, b.c. there are callbacks that require the model) """
+        callbacks = ContextLoader.load_callbacks_from_config(experiment_config, partial_context)
+        partial_context["callbacks"] = callbacks
 
-    def __init__(self, experiment_context, model, optimizer, loss_fn, step_fn, epoch_start, savers):
+        return cls(partial_context)
+
+    def __init__(self, experiment_context):
         self.holder = dict()
-        self.holder["model"] = model
-        self.holder["optimizer"] = optimizer
-        self.holder["loss_fn"] = loss_fn
-        self.holder["step_fn"] = step_fn
-        self.holder["epoch_start"] = epoch_start
-        self.holder["savers"] = savers
         self.holder = {**self.holder, **experiment_context.holder}
 
     def __getitem__(self, item):
@@ -400,22 +403,26 @@ class PredictionContext:
             raise Exception("Missing 'model_path' argument. Please provide a path to the model.")
 
         """ Load experiment context """
-        experiment_context = ExperimentContext.from_config(experiment_config, split_names)
+        partial_context = ExperimentContext.from_config(experiment_config, split_names)
 
         """ Load the checkpoint """
         ckpt = load_checkpoint_from_path(model_path)
-        log_checkpoint(experiment_context["comet"], ckpt)
+        log_checkpoint(partial_context["comet"], ckpt)
 
         """ Load and setup the model from ckpt"""
         model = ContextLoader.load_model_from_config(ckpt["cp-model"], ckpt["cp-task"])
         model.load_state_dict(ckpt['state_dict'], strict=False)
-        model.to(experiment_context["device"])
+        model.to(partial_context["device"])
+        partial_context["model"] = model
 
-        return cls(experiment_context, model)
+        """ Load the callbacks (only after the model, b.c. there are callbacks that require the model) """
+        callbacks = ContextLoader.load_callbacks_from_config(experiment_config, partial_context)
+        partial_context["callbacks"] = callbacks
 
-    def __init__(self, experiment_context, model):
+        return cls(partial_context)
+
+    def __init__(self, experiment_context, model, callbacks):
         self.holder = dict()
-        self.holder["model"] = model
         self.holder = {**self.holder, **experiment_context.holder}
 
     def __getitem__(self, item):
